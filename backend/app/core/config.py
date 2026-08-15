@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24)  # 24 hours
     AGENT_SERVICE_SECRET: str = Field(default="agent_internal_service_secret_key_2026")
 
+    # LLM Agent Configuration
+    LLM_PROVIDER: str = Field(default="gemini")  # "gemini", "openai", or "mock"
+    OPENAI_API_KEY: str | None = Field(default=None)
+    OPENAI_MODEL: str = Field(default="gpt-4o-mini")
+    GEMINI_API_KEY: str | None = Field(default=None)
+    GEMINI_MODEL: str = Field(default="gemini-1.5-flash")
+    LLM_TEMPERATURE: float = Field(default=0.1)
+
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
