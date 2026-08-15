@@ -77,8 +77,10 @@ export default function Home() {
   
   // Customer Session State
   const [customerSession, setCustomerSession] = useState<CustomerSession | null>(null);
-  const [sessionInputEmail, setSessionInputEmail] = useState('john.doe@example.com');
-  const [sessionInputOrderId, setSessionInputOrderId] = useState('');
+  const [sessionInputEmail, setSessionInputEmail] = useState('alice.smith@example.com');
+  const [sessionInputOrderId, setSessionInputOrderId] = useState('9');
+
+
   
   // Staff Auth State
   const [staffSession, setStaffSession] = useState<StaffSession | null>(null);
@@ -127,6 +129,30 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const initDefaultSession = React.useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/customer-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'alice.smith@example.com', order_id: 9 })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCustomerSession({
+          customerId: data.data.customer_id,
+          email: data.data.email,
+          isVerified: data.data.is_verified,
+          token: data.data.access_token
+        });
+        addNetworkLog('POST', '/auth/customer-session', res.status, 'OK', `Initialized Session for Customer #${data.data.customer_id} (Verified: ${data.data.is_verified})`);
+      }
+    } catch {
+      // Fallback
+    }
+  }, []);
+
+
+
   // Initial Health Check & Initial Customer Session Creation
   useEffect(() => {
     fetch('http://localhost:8000/health')
@@ -145,29 +171,8 @@ export default function Home() {
         setBackendStatus('offline');
         addNetworkLog('GET', '/health', 0, 'Connection Refused', 'Could not reach backend on http://localhost:8000');
       });
-  }, []);
+  }, [initDefaultSession]);
 
-  const initDefaultSession = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/auth/customer-session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'john.doe@example.com' })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setCustomerSession({
-          customerId: data.data.customer_id,
-          email: data.data.email,
-          isVerified: data.data.is_verified,
-          token: data.data.access_token
-        });
-        addNetworkLog('POST', '/auth/customer-session', res.status, 'OK', `Initialized Session for Customer #${data.data.customer_id} (Verified: ${data.data.is_verified})`);
-      }
-    } catch {
-      // Fallback
-    }
-  };
 
   const handleCreateCustomerSession = async (verifyWithOrder: boolean) => {
     try {
@@ -672,22 +677,22 @@ export default function Home() {
               <div className="px-4 py-2 bg-slate-900/30 border-t border-slate-800/80 flex flex-wrap gap-2 text-xs">
                 <span className="text-[11px] text-slate-500 self-center mr-1">Quick Prompts:</span>
                 <button
-                  onClick={() => setInputText('Track my order 1')}
+                  onClick={() => setInputText('Track my order 9')}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded text-[11px] transition-colors"
                 >
-                  📦 Track Order #1
+                  📦 Track Order #9
                 </button>
                 <button
-                  onClick={() => setInputText('Request refund for order 2')}
+                  onClick={() => setInputText('Request refund for order 9')}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded text-[11px] transition-colors"
                 >
-                  💰 Refund Order #2
+                  💰 Refund Order #9
                 </button>
                 <button
-                  onClick={() => setInputText('Cancel order 1')}
+                  onClick={() => setInputText('Cancel order 34')}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded text-[11px] transition-colors"
                 >
-                  ❌ Cancel Order #1
+                  ❌ Cancel Order #34
                 </button>
                 <button
                   onClick={() => setInputText('Show all my orders')}
@@ -696,6 +701,7 @@ export default function Home() {
                   📋 List Orders
                 </button>
               </div>
+
 
               {/* Chat Input Form */}
               <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-800 bg-slate-900/50 flex gap-3">

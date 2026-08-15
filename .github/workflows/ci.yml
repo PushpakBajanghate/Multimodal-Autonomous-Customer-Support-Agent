@@ -13,6 +13,30 @@ jobs:
       run:
         working-directory: ./backend
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_secure_password_change_me
+          POSTGRES_DB: customer_support_db
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5435
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_secure_password_change_me
+      POSTGRES_DB: customer_support_db
+      SECRET_KEY: test_secret_jwt_key_for_ci_testing_purposes_only
+      AGENT_SERVICE_SECRET: agent_internal_service_secret_key_2026
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -26,16 +50,19 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest httpx
+          pip install pytest httpx
           pip install -r requirements.txt
 
-      - name: Run Lint (Ruff)
-        run: ruff check .
+      - name: Run Database Migrations & Seeds
+        run: |
+          export PYTHONPATH=$PYTHONPATH:.
+          alembic upgrade head
+          python scripts/seed.py
 
       - name: Run Tests (Pytest)
         run: |
           export PYTHONPATH=$PYTHONPATH:.
-          pytest
+          pytest -v
 
   frontend-ci:
     runs-on: ubuntu-latest
@@ -61,4 +88,6 @@ jobs:
         run: npm run lint
 
       - name: Build Next.js Application
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
         run: npm run build

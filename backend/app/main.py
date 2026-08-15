@@ -52,6 +52,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # Include v1 API routes
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+@app.get("/", status_code=200)
+def root():
+    return {
+        "project": settings.PROJECT_NAME,
+        "status": "online",
+        "version": "v1",
+        "docs_url": "/docs",
+        "health_url": "/health",
+        "api_v1_prefix": settings.API_V1_STR
+    }
+
 @app.get("/health", status_code=200)
 def health_check():
     return {
@@ -62,3 +73,4 @@ def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
