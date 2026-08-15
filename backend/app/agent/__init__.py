@@ -14,6 +14,7 @@ from app.agent.intent import (
     analyze_utterance
 )
 from app.agent.responder import generate_agent_response
+from app.agent.graph import AgentState, build_agent_graph, agent_graph
 
 __all__ = [
     "IntentType",
@@ -23,5 +24,8 @@ __all__ = [
     "classify_intent",
     "extract_entities",
     "analyze_utterance",
-    "generate_agent_response"
+    "generate_agent_response",
+    "AgentState",
+    "build_agent_graph",
+    "agent_graph"
 ]
