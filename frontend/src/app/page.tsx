@@ -15,6 +15,20 @@ interface Thought {
   detail: string;
 }
 
+// Keep sequence counters outside the component to guarantee absolute render purity
+let messageIdCounter = 1;
+let thoughtIdCounter = 1;
+
+const generateMessageId = () => {
+  messageIdCounter += 1;
+  return `msg-${messageIdCounter}`;
+};
+
+const generateThoughtId = () => {
+  thoughtIdCounter += 1;
+  return `thought-${thoughtIdCounter}`;
+};
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
     { id: '1', sender: 'agent', text: 'Hello! I am Aura, your multimodal support assistant. How can I help you today?', timestamp: '12:00 PM' }
@@ -30,6 +44,12 @@ export default function Home() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Helper function defined before hooks to prevent "accessed before declaration" warnings
+  const addThought = (stage: 'perception' | 'reasoning' | 'action', detail: string) => {
+    const id = generateThoughtId();
+    setThoughts(prev => [...prev, { id, stage, detail }]);
+  };
+
   // Auto scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -41,16 +61,10 @@ export default function Home() {
       callTimerRef.current = setInterval(() => {
         setCallDuration(prev => prev + 1);
       }, 1000);
-      
-      // Add mock agent thought for call start
-      addThought('perception', 'Incoming audio stream connected via WebRTC.');
-      addThought('reasoning', 'Analyzing tone of voice and query intent... System status check: normal.');
-      addThought('action', 'Synthesized audio greeting response.');
     } else {
       if (callTimerRef.current) {
         clearInterval(callTimerRef.current);
       }
-      setCallDuration(0);
     }
 
     return () => {
@@ -75,17 +89,12 @@ export default function Home() {
       });
   }, []);
 
-  const addThought = (stage: 'perception' | 'reasoning' | 'action', detail: string) => {
-    const id = Math.random().toString();
-    setThoughts(prev => [...prev, { id, stage, detail }]);
-  };
-
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
     const userMsg: Message = {
-      id: Math.random().toString(),
+      id: generateMessageId(),
       sender: 'user',
       text: inputText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -104,7 +113,7 @@ export default function Home() {
     setTimeout(() => {
       const responseText = getMockResponse(userMsg.text);
       const agentMsg: Message = {
-        id: Math.random().toString(),
+        id: generateMessageId(),
         sender: 'agent',
         text: responseText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -134,6 +143,19 @@ export default function Home() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const startCall = () => {
+    setCallDuration(0);
+    setIsCalling(true);
+    addThought('perception', 'Incoming audio stream connected via WebRTC.');
+    addThought('reasoning', 'Analyzing tone of voice and query intent... System status check: normal.');
+    addThought('action', 'Synthesized audio greeting response.');
+  };
+
+  const endCall = () => {
+    setIsCalling(false);
+    setCallDuration(0);
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100 font-sans">
       {/* Top Banner / Navigation */}
@@ -151,7 +173,7 @@ export default function Home() {
             <span className="text-slate-400">Backend API:</span>
             {backendStatus === 'checking' && <span className="text-amber-400 animate-pulse">Connecting...</span>}
             {backendStatus === 'online' && <span className="text-emerald-400 font-semibold">Online</span>}
-            {backendStatus === 'offline' && <span className="text-rose-400 font-semibold">Offline (Run docker-compose)</span>}
+            {backendStatus === 'offline' && <span className="text-rose-400 font-semibold">Offline (Run local backend)</span>}
           </div>
           <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-full">
             <span className="text-slate-400">Channels:</span>
@@ -238,7 +260,7 @@ export default function Home() {
                   CALL ACTIVE: {formatDuration(callDuration)}
                 </div>
                 <button
-                  onClick={() => setIsCalling(false)}
+                  onClick={endCall}
                   className="bg-rose-600 hover:bg-rose-500 transition-colors px-6 py-2.5 rounded-full text-sm font-bold text-white shadow-lg flex items-center gap-2 mt-2"
                 >
                   <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
@@ -250,7 +272,7 @@ export default function Home() {
             ) : (
               <div className="py-4">
                 <button
-                  onClick={() => setIsCalling(true)}
+                  onClick={startCall}
                   className="bg-emerald-600 hover:bg-emerald-500 transition-colors px-8 py-3 rounded-full text-sm font-bold text-white shadow-lg flex items-center gap-2 animate-bounce"
                 >
                   <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
