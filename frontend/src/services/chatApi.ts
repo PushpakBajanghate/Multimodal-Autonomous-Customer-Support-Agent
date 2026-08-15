@@ -9,6 +9,8 @@ import {
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000/api/v1';
 export const HEALTH_URL = process.env.NEXT_PUBLIC_HEALTH_URL || 'http://localhost:8000/health';
 
+const TOKEN_STORAGE_KEY = 'aura_access_token';
+
 export class ChatApiError extends Error {
   statusCode: number;
   reason: string;
@@ -19,6 +21,83 @@ export class ChatApiError extends Error {
     this.statusCode = statusCode;
     this.reason = reason;
   }
+}
+
+export function getStoredAuthToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAuthToken(token: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearStoredAuthToken(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Retrieves a valid customer JWT session token from local storage or creates one via backend auth.
+ */
+export async function getOrFetchSessionToken(forceRefresh = false): Promise<string> {
+  if (!forceRefresh) {
+    const existing = getStoredAuthToken();
+    if (existing) return existing;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/customer-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.data?.access_token) {
+      setStoredAuthToken(data.data.access_token);
+      return data.data.access_token;
+    }
+  } catch {
+    // Ignore and fallback to existing
+  }
+
+  return getStoredAuthToken() || '';
+}
+
+/**
+ * Performs an authenticated fetch request with auto-retry and token refresh on 401
+ */
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  let token = await getOrFetchSessionToken();
+  const headers = new Headers(options.headers || {});
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  let res = await fetch(url, { ...options, headers });
+
+  if (res.status === 401) {
+    clearStoredAuthToken();
+    token = await getOrFetchSessionToken(true);
+    if (token) {
+      const retryHeaders = new Headers(options.headers || {});
+      retryHeaders.set('Authorization', `Bearer ${token}`);
+      res = await fetch(url, { ...options, headers: retryHeaders });
+    }
+  }
+  return res;
 }
 
 /**
@@ -36,7 +115,7 @@ export async function sendChatMessage(
   };
 
   try {
-    const res = await fetch(`${API_BASE}/chat`, {
+    const res = await authFetch(`${API_BASE}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -80,7 +159,7 @@ export async function getConversationMessages(
   conversationId: number
 ): Promise<ConversationMessageReadData[]> {
   try {
-    const res = await fetch(`${API_BASE}/chat/conversations/${conversationId}/messages`);
+    const res = await authFetch(`${API_BASE}/chat/conversations/${conversationId}/messages`);
     const data: ApiResponseWrapper<ConversationMessageReadData[]> = await res.json().catch(() => ({
       success: false,
       status: 'failure',
@@ -117,7 +196,7 @@ export async function createNewConversation(
   channel = 'chat'
 ): Promise<ConversationReadData> {
   try {
-    const res = await fetch(`${API_BASE}/chat/conversations/new?channel=${encodeURIComponent(channel)}`, {
+    const res = await authFetch(`${API_BASE}/chat/conversations/new?channel=${encodeURIComponent(channel)}`, {
       method: 'POST'
     });
     const data: ApiResponseWrapper<ConversationReadData> = await res.json().catch(() => ({
