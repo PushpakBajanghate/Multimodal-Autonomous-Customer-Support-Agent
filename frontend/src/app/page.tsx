@@ -13,6 +13,7 @@ interface Thought {
   id: string;
   stage: 'perception' | 'reasoning' | 'action';
   detail: string;
+  timestamp: string;
 }
 
 // Keep sequence counters outside the component to guarantee absolute render purity
@@ -29,15 +30,17 @@ const generateThoughtId = () => {
   return `thought-${thoughtIdCounter}`;
 };
 
+const API_BASE = 'http://localhost:8000/api/v1';
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', sender: 'agent', text: 'Hello! I am Aura, your multimodal support assistant. How can I help you today?', timestamp: '12:00 PM' }
+    { id: '1', sender: 'agent', text: 'Hello! I am Aura, your multimodal support assistant. How can I help you today? (Try typing: "track 1", "refund 1", "cancel 1", "customer 1")', timestamp: '12:00 PM' }
   ]);
   const [inputText, setInputText] = useState('');
   const [isCalling, setIsCalling] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [thoughts, setThoughts] = useState<Thought[]>([
-    { id: 't1', stage: 'perception', detail: 'Initialized agent context. Listening on Web Chat & VoIP.' }
+    { id: 't1', stage: 'perception', detail: 'Initialized agent context. Listening on Web Chat & VoIP.', timestamp: '12:00:00 PM' }
   ]);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   
@@ -47,7 +50,8 @@ export default function Home() {
   // Helper function defined before hooks to prevent "accessed before declaration" warnings
   const addThought = (stage: 'perception' | 'reasoning' | 'action', detail: string) => {
     const id = generateThoughtId();
-    setThoughts(prev => [...prev, { id, stage, detail }]);
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setThoughts(prev => [...prev, { id, stage, detail, timestamp }]);
   };
 
   // Auto scroll chat
@@ -89,52 +93,125 @@ export default function Home() {
       });
   }, []);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
+    const userText = inputText;
     const userMsg: Message = {
       id: generateMessageId(),
       sender: 'user',
-      text: inputText,
+      text: userText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
 
-    // Trigger mock agent thoughts
-    addThought('perception', `Received text input: "${userMsg.text}"`);
-    
-    setTimeout(() => {
-      addThought('reasoning', 'Retrieving knowledge base embeddings & checking agent policy...');
-    }, 600);
+    addThought('perception', `Received text input: "${userText}"`);
 
-    setTimeout(() => {
-      const responseText = getMockResponse(userMsg.text);
+    const lower = userText.toLowerCase();
+    const matchId = userText.match(/\d+/);
+    const parsedId = matchId ? parseInt(matchId[0], 10) : 1;
+
+    // Simulate Agent Thinking & Tool Selection
+    setTimeout(async () => {
+      addThought('reasoning', `Analyzing query intent. Evaluating REST tool execution for entity ID #${parsedId}...`);
+      
+      let agentReply = "";
+      let toolExecuted = "";
+
+      try {
+        if (lower.includes("track")) {
+          toolExecuted = `GET /orders/${parsedId}/tracking`;
+          const res = await fetch(`${API_BASE}/orders/${parsedId}/tracking`);
+          const body = await res.json();
+          if (res.ok && body.success) {
+            const data = body.data;
+            agentReply = `📦 Order #${data.order_id} is currently ${data.status.toUpperCase()}. Carrier: ${data.carrier} (${data.tracking_number}). Expected Delivery: ${new Date(data.expected_delivery).toLocaleDateString()}.`;
+          } else {
+            const err = body.detail || body;
+            agentReply = `❌ Unable to track order #${parsedId}: ${err.reason || 'Order not found'}`;
+          }
+        } else if (lower.includes("refund")) {
+          toolExecuted = `POST /orders/${parsedId}/refund`;
+          const res = await fetch(`${API_BASE}/orders/${parsedId}/refund`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: "Customer requested refund via web portal chat" })
+          });
+          const body = await res.json();
+          if (res.ok && body.success) {
+            agentReply = `✅ Refund of $${body.data.amount} for Order #${parsedId} has been APPROVED. Refund ID: #${body.data.id}.`;
+          } else {
+            const err = body.detail || body;
+            agentReply = `⛔ Refund Rejected for Order #${parsedId}: ${err.reason || 'Ineligible for refund'}`;
+          }
+        } else if (lower.includes("cancel")) {
+          toolExecuted = `POST /orders/${parsedId}/cancel`;
+          const res = await fetch(`${API_BASE}/orders/${parsedId}/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: "Customer requested cancellation" })
+          });
+          const body = await res.json();
+          if (res.ok && body.success) {
+            agentReply = `✅ Order #${parsedId} has been successfully CANCELLED. Status updated to cancelled.`;
+          } else {
+            const err = body.detail || body;
+            agentReply = `⛔ Cancellation Rejected for Order #${parsedId}: ${err.reason || 'Cannot cancel order'}`;
+          }
+        } else if (lower.includes("customer") && lower.includes("order")) {
+          toolExecuted = `GET /customers/${parsedId}/orders`;
+          const res = await fetch(`${API_BASE}/customers/${parsedId}/orders`);
+          const body = await res.json();
+          if (res.ok && body.success) {
+            agentReply = `📋 Customer #${parsedId} has ${body.data.length} orders on file. Recent order statuses: ${body.data.slice(0, 3).map((o: { id: number; status: string }) => `#${o.id} (${o.status})`).join(', ')}.`;
+          } else {
+            const err = body.detail || body;
+            agentReply = `❌ Failed to fetch orders for customer #${parsedId}: ${err.reason || 'Not found'}`;
+          }
+        } else if (lower.includes("customer")) {
+          toolExecuted = `GET /customers/${parsedId}`;
+          const res = await fetch(`${API_BASE}/customers/${parsedId}`);
+          const body = await res.json();
+          if (res.ok && body.success) {
+            agentReply = `👤 Customer Found: ${body.data.name} (${body.data.email}). Account active since ${new Date(body.data.created_at).toLocaleDateString()}.`;
+          } else {
+            const err = body.detail || body;
+            agentReply = `❌ Customer #${parsedId} not found: ${err.reason || 'Invalid ID'}`;
+          }
+        } else {
+          agentReply = getFallbackResponse(userText);
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        agentReply = `⚠️ Backend REST API connection error. Please ensure FastAPI server is running. (${errMsg})`;
+      }
+
+      if (toolExecuted) {
+        addThought('action', `Tool Invocation [${toolExecuted}] completed. Result payload processed.`);
+      } else {
+        addThought('action', `Dispatched conversational response.`);
+      }
+
       const agentMsg: Message = {
         id: generateMessageId(),
         sender: 'agent',
-        text: responseText,
+        text: agentReply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
+
       setMessages(prev => [...prev, agentMsg]);
-      addThought('action', `Dispatched API response: "${responseText}"`);
-    }, 1500);
+    }, 600);
   };
 
-  const getMockResponse = (input: string) => {
+  const getFallbackResponse = (input: string) => {
     const query = input.toLowerCase();
     if (query.includes('hello') || query.includes('hi')) {
       return "Hi there! How can I assist you with your customer support inquiries today?";
     }
-    if (query.includes('refund') || query.includes('money')) {
-      return "I can help process standard refunds. Please provide your Order ID, and I will review the eligibility criteria.";
-    }
-    if (query.includes('track') || query.includes('order')) {
-      return "To track your shipment, please share your order number. I will fetch the live courier coordinates for you.";
-    }
-    return "Understood. I've logged your request regarding that issue and am checking the best path forward to resolve it.";
+    return "Understood. You can test live REST API tools by typing commands like 'track 1', 'refund 1', 'cancel 1', or 'customer 1'.";
   };
 
   const formatDuration = (seconds: number) => {
@@ -172,8 +249,8 @@ export default function Home() {
           <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-full">
             <span className="text-slate-400">Backend API:</span>
             {backendStatus === 'checking' && <span className="text-amber-400 animate-pulse">Connecting...</span>}
-            {backendStatus === 'online' && <span className="text-emerald-400 font-semibold">Online</span>}
-            {backendStatus === 'offline' && <span className="text-rose-400 font-semibold">Offline (Run local backend)</span>}
+            {backendStatus === 'online' && <span className="text-emerald-400 font-semibold">Online (REST Tools Connected)</span>}
+            {backendStatus === 'offline' && <span className="text-rose-400 font-semibold">Offline (Run uvicorn)</span>}
           </div>
           <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-full">
             <span className="text-slate-400">Channels:</span>
@@ -221,7 +298,7 @@ export default function Home() {
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Ask a question (e.g., 'refund policy', 'track order')..."
+              placeholder="Type a query (e.g. 'track 1', 'refund 1', 'cancel 1', 'customer 1')..."
               className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors text-slate-100 placeholder-slate-500"
             />
             <button
@@ -298,7 +375,7 @@ export default function Home() {
                     }`}>
                       {thought.stage}
                     </span>
-                    <span className="text-[10px] text-slate-500">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    <span className="text-[10px] text-slate-500">{thought.timestamp}</span>
                   </div>
                   <p className="text-slate-300 leading-normal">{thought.detail}</p>
                 </div>
