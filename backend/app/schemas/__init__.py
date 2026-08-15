@@ -13,4 +13,8 @@ from app.schemas.auth import (
     StaffLoginRequest, StaffTokenRead, TokenPayload,
     CustomerPrincipal, StaffPrincipal, AgentPrincipal
 )
+from app.schemas.chat import (
+    ChatRequest, ChatResponse, ConversationMessageRead, ConversationRead
+)
+
 
