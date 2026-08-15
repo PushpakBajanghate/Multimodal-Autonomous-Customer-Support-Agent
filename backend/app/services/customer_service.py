@@ -6,7 +6,7 @@ from app.models import Customer, Order, AddressChangeRequest, PasswordResetReque
 def get_customer_by_id(db: Session, customer_id: int) -> Tuple[bool, Optional[str], Optional[Customer]]:
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
-        return False, f"Customer with ID {customer_id} not found", None
+        return False, f"Customer #{customer_id} not found in database.", None
     return True, None, customer
 
 def get_customer_orders(db: Session, customer_id: int) -> Tuple[bool, Optional[str], List[Order]]:
@@ -26,11 +26,15 @@ def request_address_change(
     if order_id is not None:
         order = db.query(Order).filter(Order.id == order_id, Order.customer_id == customer_id).first()
         if not order:
-            return False, f"Order with ID {order_id} not found for customer {customer_id}", None
+            return False, f"Order #{order_id} does not belong to Customer #{customer_id} or does not exist.", None
         
         # Check order editability business rules
         if not order.is_editable or order.status != "placed":
-            return False, f"Address cannot be updated. Order #{order_id} is in status '{order.status}' and is not editable.", None
+            return (
+                False,
+                f"Cannot update address for Order #{order_id}: order is in '{order.status}' status (is_editable={order.is_editable}). Address updates are only permitted while order is in 'placed' status.",
+                None
+            )
 
     addr_req = AddressChangeRequest(
         customer_id=customer_id,

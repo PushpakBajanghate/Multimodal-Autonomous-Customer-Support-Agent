@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,12 @@ from app.db.session import SessionLocal
 from app.models import Customer, Order, OrderItem
 
 client = TestClient(app, raise_server_exceptions=False)
+
+def get_error_payload(response):
+    body = response.json()
+    if "detail" in body and isinstance(body["detail"], dict):
+        return body["detail"]
+    return body
 
 @pytest.fixture(scope="module")
 def db():
@@ -33,7 +39,7 @@ def test_get_customer_happy_path(db: Session):
 def test_get_customer_not_found():
     response = client.get("/api/v1/customers/999999")
     assert response.status_code == 404
-    data = response.json()["detail"]
+    data = get_error_payload(response)
     assert data["success"] is False
     assert data["status"] == "failure"
     assert "not found" in data["reason"].lower()
@@ -53,6 +59,9 @@ def test_get_customer_orders_happy_path(db: Session):
 def test_get_customer_orders_not_found():
     response = client.get("/api/v1/customers/999999/orders")
     assert response.status_code == 404
+    data = get_error_payload(response)
+    assert data["success"] is False
+    assert "not found" in data["reason"].lower()
 
 
 # 3. GET /orders/{id}
@@ -69,6 +78,9 @@ def test_get_order_happy_path(db: Session):
 def test_get_order_not_found():
     response = client.get("/api/v1/orders/999999")
     assert response.status_code == 404
+    data = get_error_payload(response)
+    assert data["success"] is False
+    assert "not found" in data["reason"].lower()
 
 
 # 4. GET /orders/{id}/tracking
@@ -86,6 +98,9 @@ def test_get_order_tracking_happy_path(db: Session):
 def test_get_order_tracking_not_found():
     response = client.get("/api/v1/orders/999999/tracking")
     assert response.status_code == 404
+    data = get_error_payload(response)
+    assert data["success"] is False
+    assert "not found" in data["reason"].lower()
 
 
 # 5. POST /orders/{id}/refund (Happy & Rejection)
@@ -95,8 +110,8 @@ def test_refund_happy_path(db: Session):
     order = Order(
         customer_id=customer.id,
         status="delivered",
-        order_date=datetime.utcnow() - timedelta(days=5),
-        expected_delivery=datetime.utcnow() - timedelta(days=2),
+        order_date=datetime.now(timezone.utc) - timedelta(days=5),
+        expected_delivery=datetime.now(timezone.utc) - timedelta(days=2),
         total_amount=100.00,
         is_editable=False
     )
@@ -120,8 +135,8 @@ def test_refund_rejection_path_ineligible_status(db: Session):
     order = Order(
         customer_id=customer.id,
         status="shipped",
-        order_date=datetime.utcnow() - timedelta(days=2),
-        expected_delivery=datetime.utcnow() + timedelta(days=2),
+        order_date=datetime.now(timezone.utc) - timedelta(days=2),
+        expected_delivery=datetime.now(timezone.utc) + timedelta(days=2),
         total_amount=50.00,
         is_editable=False
     )
@@ -133,10 +148,10 @@ def test_refund_rejection_path_ineligible_status(db: Session):
         json={"reason": "Decided I don't want it"}
     )
     assert response.status_code == 409
-    data = response.json()["detail"]
+    data = get_error_payload(response)
     assert data["success"] is False
     assert data["status"] == "failure"
-    assert "ineligible" in data["reason"].lower()
+    assert "cannot process refund" in data["reason"].lower()
 
 
 # 6. POST /orders/{id}/cancel (Happy & Rejection)
@@ -145,8 +160,8 @@ def test_cancel_order_happy_path(db: Session):
     order = Order(
         customer_id=customer.id,
         status="placed",
-        order_date=datetime.utcnow(),
-        expected_delivery=datetime.utcnow() + timedelta(days=4),
+        order_date=datetime.now(timezone.utc),
+        expected_delivery=datetime.now(timezone.utc) + timedelta(days=4),
         total_amount=75.00,
         is_editable=True
     )
@@ -167,8 +182,8 @@ def test_cancel_order_rejection_already_shipped(db: Session):
     order = Order(
         customer_id=customer.id,
         status="shipped",
-        order_date=datetime.utcnow() - timedelta(days=2),
-        expected_delivery=datetime.utcnow() + timedelta(days=1),
+        order_date=datetime.now(timezone.utc) - timedelta(days=2),
+        expected_delivery=datetime.now(timezone.utc) + timedelta(days=1),
         total_amount=120.00,
         is_editable=False
     )
@@ -180,9 +195,9 @@ def test_cancel_order_rejection_already_shipped(db: Session):
         json={"reason": "Too late cancellation attempt"}
     )
     assert response.status_code == 409
-    data = response.json()["detail"]
+    data = get_error_payload(response)
     assert data["success"] is False
-    assert "cannot be cancelled" in data["reason"].lower()
+    assert "already shipped" in data["reason"].lower()
 
 
 # 7. POST /customers/{id}/address (Happy & Rejection)
@@ -202,8 +217,8 @@ def test_address_change_rejection_non_editable_order(db: Session):
     order = Order(
         customer_id=customer.id,
         status="shipped",
-        order_date=datetime.utcnow() - timedelta(days=3),
-        expected_delivery=datetime.utcnow() + timedelta(days=1),
+        order_date=datetime.now(timezone.utc) - timedelta(days=3),
+        expected_delivery=datetime.now(timezone.utc) + timedelta(days=1),
         total_amount=200.00,
         is_editable=False
     )
@@ -215,9 +230,9 @@ def test_address_change_rejection_non_editable_order(db: Session):
         json={"new_address": "200 Late Change Rd", "order_id": order.id}
     )
     assert response.status_code == 409
-    data = response.json()["detail"]
+    data = get_error_payload(response)
     assert data["success"] is False
-    assert "not editable" in data["reason"].lower()
+    assert "cannot update address" in data["reason"].lower()
 
 
 # 8. POST /customers/{id}/password-reset (Happy & Rejection)
@@ -232,6 +247,9 @@ def test_password_reset_happy_path(db: Session):
 def test_password_reset_not_found():
     response = client.post("/api/v1/customers/999999/password-reset", json={})
     assert response.status_code == 404
+    data = get_error_payload(response)
+    assert data["success"] is False
+    assert "not found" in data["reason"].lower()
 
 
 # 9. POST /tickets (Happy & Rejection)
@@ -260,6 +278,6 @@ def test_create_ticket_rejection_invalid_customer():
     }
     response = client.post("/api/v1/tickets", json=payload)
     assert response.status_code == 400
-    data = response.json()["detail"]
+    data = get_error_payload(response)
     assert data["success"] is False
     assert "not found" in data["reason"].lower()

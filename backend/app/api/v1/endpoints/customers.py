@@ -65,8 +65,12 @@ def update_customer_address(
         db, customer_id=id, new_address=payload.new_address, order_id=payload.order_id
     )
     if not success or not addr_req:
+        is_not_found = "not found" in (error or "").lower()
+        is_conflict = "cannot update address" in (error or "").lower() or "not editable" in (error or "").lower()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT if "not editable" in (error or "") else status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_404_NOT_FOUND if is_not_found else (
+                status.HTTP_409_CONFLICT if is_conflict else status.HTTP_400_BAD_REQUEST
+            ),
             detail=ApiResponse[AddressChangeRead](
                 success=False,
                 status="failure",
@@ -90,8 +94,9 @@ def request_password_reset(
 ):
     success, error, reset_req = services.request_password_reset(db, customer_id=id)
     if not success or not reset_req:
+        is_not_found = "not found" in (error or "").lower()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND if "not found" in (error or "") else status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_404_NOT_FOUND if is_not_found else status.HTTP_400_BAD_REQUEST,
             detail=ApiResponse[PasswordResetRead](
                 success=False,
                 status="failure",

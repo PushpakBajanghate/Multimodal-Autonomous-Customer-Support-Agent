@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
@@ -16,6 +18,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Standardized Error Handler for HTTPException
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    if isinstance(exc.detail, dict) and "status" in exc.detail:
+        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "status": "failure",
+            "reason": str(exc.detail),
+            "data": None
+        }
+    )
+
+# Standardized Error Handler for Validation Errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    first_error = errors[0]["msg"] if errors else "Invalid request payload"
+    return JSONResponse(
+        status_code=422,
+        content={
+            "success": False,
+            "status": "failure",
+            "reason": f"Validation error: {first_error}",
+            "data": {"errors": errors}
+        }
+    )
 
 # Include v1 API routes
 app.include_router(api_router, prefix=settings.API_V1_STR)

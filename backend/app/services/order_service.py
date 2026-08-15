@@ -6,7 +6,7 @@ from app.models import Order, Refund, Cancellation
 def get_order_by_id(db: Session, order_id: int) -> Tuple[bool, Optional[str], Optional[Order]]:
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
-        return False, f"Order with ID {order_id} not found", None
+        return False, f"Order #{order_id} not found in database.", None
     return True, None, order
 
 def get_order_tracking(db: Session, order_id: int) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
@@ -41,7 +41,11 @@ def process_refund(db: Session, order_id: int, reason: str) -> Tuple[bool, Optio
 
     # Business Rule 1: Status must be delivered or cancelled
     if order.status not in ["delivered", "cancelled"]:
-        return False, f"Order #{order_id} is ineligible for refund. Status is '{order.status}' (refunds are only permitted for delivered or cancelled orders).", None
+        return (
+            False,
+            f"Cannot process refund for Order #{order_id}: current status is '{order.status}' (refunds are only permitted for delivered or cancelled orders).",
+            None
+        )
 
     # Business Rule 2: 30-day window check
     now = datetime.now(timezone.utc)
@@ -51,7 +55,12 @@ def process_refund(db: Session, order_id: int, reason: str) -> Tuple[bool, Optio
 
     days_since_order = (now - order_dt).days
     if days_since_order > 30:
-        return False, f"Refund request window expired. Order #{order_id} was placed {days_since_order} days ago (limit is 30 days).", None
+        order_date_str = order.order_date.strftime('%Y-%m-%d')
+        return (
+            False,
+            f"Refund ineligible for Order #{order_id}: order was placed on {order_date_str} ({days_since_order} days ago), which exceeds our 30-day return policy window.",
+            None
+        )
 
     # Business Rule 3: Existing active/approved refund check
     existing_refund = db.query(Refund).filter(
@@ -60,7 +69,12 @@ def process_refund(db: Session, order_id: int, reason: str) -> Tuple[bool, Optio
     ).first()
 
     if existing_refund:
-        return False, f"A refund has already been requested/processed for Order #{order_id} (Status: {existing_refund.status}).", None
+        created_str = existing_refund.created_at.strftime('%Y-%m-%d') if existing_refund.created_at else "prior date"
+        return (
+            False,
+            f"Cannot process refund for Order #{order_id}: a refund request was already {existing_refund.status} on {created_str} for ${existing_refund.amount:.2f}.",
+            None
+        )
 
     # Process refund
     refund = Refund(
@@ -80,8 +94,32 @@ def process_cancellation(db: Session, order_id: int, reason: str) -> Tuple[bool,
         return False, error, None
 
     # Business Rule 1: Order must be in 'placed' status to cancel
-    if order.status != "placed":
-        return False, f"Order #{order_id} cannot be cancelled because its current status is '{order.status}' (cancellations are only allowed prior to shipping).", None
+    if order.status == "shipped":
+        ship_date_str = order.order_date.strftime('%Y-%m-%d')
+        return (
+            False,
+            f"Cannot cancel Order #{order_id}: order was already shipped on {ship_date_str} (cancellations are only allowed prior to shipping).",
+            None
+        )
+    elif order.status == "delivered":
+        deliv_date_str = order.expected_delivery.strftime('%Y-%m-%d')
+        return (
+            False,
+            f"Cannot cancel Order #{order_id}: order was already delivered on {deliv_date_str}. Please initiate a refund request instead.",
+            None
+        )
+    elif order.status == "cancelled":
+        return (
+            False,
+            f"Cannot cancel Order #{order_id}: this order has already been cancelled.",
+            None
+        )
+    elif order.status != "placed":
+        return (
+            False,
+            f"Cannot cancel Order #{order_id}: order is in '{order.status}' status (only 'placed' orders can be cancelled).",
+            None
+        )
 
     # Update order state
     order.status = "cancelled"
