@@ -10,11 +10,17 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = Field(default="postgres_secure_password_change_me")
     POSTGRES_DB: str = Field(default="customer_support_db")
     POSTGRES_HOST: str = Field(default="127.0.0.1")
-    POSTGRES_PORT: int = Field(default=5432)
+    POSTGRES_PORT: int = Field(default=5435)
 
     # Redis configurations
     REDIS_HOST: str = Field(default="127.0.0.1")
     REDIS_PORT: int = Field(default=6379)
+
+    # Security & JWT Auth
+    SECRET_KEY: str = Field(default="super_secret_jwt_key_for_development_change_in_production")
+    ALGORITHM: str = Field(default="HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24)  # 24 hours
+    AGENT_SERVICE_SECRET: str = Field(default="agent_internal_service_secret_key_2026")
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:

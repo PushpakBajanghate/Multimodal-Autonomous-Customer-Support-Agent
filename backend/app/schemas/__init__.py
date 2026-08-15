@@ -8,3 +8,9 @@ from app.schemas.order import (
     RefundCreate, RefundRead, CancellationCreate, CancellationRead
 )
 from app.schemas.ticket import TicketCreate, TicketRead
+from app.schemas.auth import (
+    CustomerSessionCreate, CustomerVerifySessionRequest, CustomerSessionRead,
+    StaffLoginRequest, StaffTokenRead, TokenPayload,
+    CustomerPrincipal, StaffPrincipal, AgentPrincipal
+)
+

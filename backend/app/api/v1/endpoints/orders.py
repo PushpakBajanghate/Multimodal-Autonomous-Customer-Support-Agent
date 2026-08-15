@@ -1,17 +1,40 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+
 from app.db.session import get_db
 from app.schemas.common import ApiResponse
 from app.schemas.order import (
     OrderRead, OrderTrackingRead, RefundCreate, RefundRead,
     CancellationCreate, CancellationRead
 )
+from app.schemas.auth import CustomerPrincipal
+from app.api.deps import get_current_customer, require_verified_customer
+from app.models import Order
 from app import services
 
 router = APIRouter()
 
+def _check_order_ownership(db: Session, current_customer: CustomerPrincipal, order_id: int):
+    if current_customer.auth_type == "customer_jwt":
+        order = db.query(Order).filter(Order.id == order_id).first()
+        if order and order.customer_id != current_customer.customer_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ApiResponse(
+                    success=False,
+                    status="failure",
+                    reason="Access forbidden: this order belongs to another customer.",
+                    data=None
+                ).model_dump()
+            )
+
 @router.get("/{id}", response_model=ApiResponse[OrderRead])
-def get_order(id: int, db: Session = Depends(get_db)):
+def get_order(
+    id: int,
+    db: Session = Depends(get_db),
+    current_customer: CustomerPrincipal = Depends(get_current_customer)
+):
+    _check_order_ownership(db, current_customer, id)
     success, error, order = services.get_order_by_id(db, order_id=id)
     if not success or not order:
         raise HTTPException(
@@ -32,7 +55,12 @@ def get_order(id: int, db: Session = Depends(get_db)):
     )
 
 @router.get("/{id}/tracking", response_model=ApiResponse[OrderTrackingRead])
-def get_order_tracking(id: int, db: Session = Depends(get_db)):
+def get_order_tracking(
+    id: int,
+    db: Session = Depends(get_db),
+    current_customer: CustomerPrincipal = Depends(get_current_customer)
+):
+    _check_order_ownership(db, current_customer, id)
     success, error, tracking_data = services.get_order_tracking(db, order_id=id)
     if not success or not tracking_data:
         raise HTTPException(
@@ -56,11 +84,15 @@ def get_order_tracking(id: int, db: Session = Depends(get_db)):
 def request_order_refund(
     id: int,
     payload: RefundCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_customer: CustomerPrincipal = Depends(require_verified_customer)
 ):
+    """
+    Sensitive Action: Requires verified customer session.
+    """
+    _check_order_ownership(db, current_customer, id)
     success, error, refund = services.process_refund(db, order_id=id, reason=payload.reason)
     if not success or not refund:
-        # Check if error is due to not found vs ineligible business rule
         is_not_found = "not found" in (error or "").lower()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND if is_not_found else status.HTTP_409_CONFLICT,
@@ -83,8 +115,13 @@ def request_order_refund(
 def cancel_order(
     id: int,
     payload: CancellationCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_customer: CustomerPrincipal = Depends(require_verified_customer)
 ):
+    """
+    Sensitive Action: Requires verified customer session.
+    """
+    _check_order_ownership(db, current_customer, id)
     success, error, cancellation = services.process_cancellation(db, order_id=id, reason=payload.reason)
     if not success or not cancellation:
         is_not_found = "not found" in (error or "").lower()
