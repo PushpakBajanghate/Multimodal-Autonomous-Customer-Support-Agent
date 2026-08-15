@@ -44,7 +44,19 @@ def send_chat_message(
         db.commit()
         db.refresh(conversation)
 
-    # 2. Persist User Message
+    # 2. Retrieve Conversation History for Context
+    past_messages = (
+        db.query(ConversationMessage)
+        .filter(ConversationMessage.conversation_id == conversation.id)
+        .order_by(ConversationMessage.created_at.asc())
+        .all()
+    )
+    history_context = [
+        {"sender": m.sender, "text": m.message_text}
+        for m in past_messages
+    ]
+
+    # 3. Persist User Message
     user_msg = ConversationMessage(
         conversation_id=conversation.id,
         sender="user",
@@ -54,14 +66,17 @@ def send_chat_message(
     db.commit()
     db.refresh(user_msg)
 
-    # 3. Generate Agent Reply (Stubbed for Phase 2)
-    clean_text = payload.message.strip()
-    agent_reply_text = (
-        f"Thank you for contacting Aura Support! I received your inquiry: \"{clean_text}\". "
-        f"Our support system is active (Session #{conversation.id}). How else can I assist you today?"
+    # 4. Generate Real Intelligent Agent Reply
+    from app.agent.responder import generate_agent_response
+    agent_reply_text = generate_agent_response(
+        db=db,
+        message=payload.message,
+        conversation_id=conversation.id,
+        customer_id=customer_id,
+        conversation_history=history_context
     )
 
-    # 4. Persist Agent Message
+    # 5. Persist Agent Message
     agent_msg = ConversationMessage(
         conversation_id=conversation.id,
         sender="agent",

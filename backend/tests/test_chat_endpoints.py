@@ -40,7 +40,7 @@ def test_send_chat_message_creates_conversation_and_persists_messages(db: Sessio
     assert data["success"] is True
     assert "conversation_id" in data["data"]
     assert "reply" in data["data"]
-    assert "Where is my package" in data["data"]["reply"]
+    assert len(data["data"]["reply"]) > 5
 
     conv_id = data["data"]["conversation_id"]
 
@@ -59,7 +59,7 @@ def test_send_chat_message_creates_conversation_and_persists_messages(db: Sessio
     assert messages[0].sender == "user"
     assert messages[0].message_text == "Where is my package from yesterday?"
     assert messages[1].sender == "agent"
-    assert "Thank you for contacting Aura Support" in messages[1].message_text
+    assert len(messages[1].message_text) > 5
 
 def test_send_chat_message_existing_conversation(db: Session):
     customer = db.query(Customer).first()
@@ -120,3 +120,28 @@ def test_chat_unauthenticated_rejected():
         json={"message": "Hello without auth"}
     )
     assert response.status_code == 401
+
+def test_real_agent_dynamic_intent_and_clarification(db: Session):
+    customer = db.query(Customer).first()
+
+    # 1. Ambiguous cancellation request
+    r1 = client.post(
+        "/api/v1/chat",
+        headers=auth_header(customer.id),
+        json={"message": "mera order cancel karna hai"}
+    )
+    assert r1.status_code == 200
+    reply1 = r1.json()["data"]["reply"]
+    # Agent should ask for Order ID rather than guess
+    assert "order id" in reply1.lower() or "which order" in reply1.lower()
+
+    # 2. Tracking with real order
+    r2 = client.post(
+        "/api/v1/chat",
+        headers=auth_header(customer.id),
+        json={"message": "Please track my order #9"}
+    )
+    assert r2.status_code == 200
+    reply2 = r2.json()["data"]["reply"]
+    assert "9" in reply2
+    assert "status" in reply2.lower()

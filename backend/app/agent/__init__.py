@@ -13,6 +13,7 @@ from app.agent.intent import (
     extract_entities,
     analyze_utterance
 )
+from app.agent.responder import generate_agent_response
 
 __all__ = [
     "IntentType",
@@ -21,5 +22,6 @@ __all__ = [
     "AnalysisResult",
     "classify_intent",
     "extract_entities",
-    "analyze_utterance"
+    "analyze_utterance",
+    "generate_agent_response"
 ]
