@@ -1,13 +1,16 @@
 """
 LangGraph Multi-Channel Agent Brain.
 Implements the unified autonomous state graph for customer support across Chat and Voice channels.
+Wires real domain tools from app.agent.tools with input validation, retry logic (max 1 retry),
+strict policy verification, and human escalation.
 """
 
-from typing import Dict, Any, List, Optional, TypedDict, Annotated
+from typing import Dict, Any, List, Optional, TypedDict
 from langgraph.graph import StateGraph, START, END
 
 from app.agent.schemas import IntentType, ExtractedEntities
 from app.agent.intent import analyze_utterance
+from app.agent.tools import TOOL_REGISTRY, create_ticket
 
 
 class AgentState(TypedDict, total=False):
@@ -38,6 +41,9 @@ class AgentState(TypedDict, total=False):
     selected_tool: Optional[str]
     tool_args: Dict[str, Any]
     tool_results: Dict[str, Any]
+    tool_status: Optional[str]
+    retry_count: int
+    needs_retry: bool
 
     # 5. Risk, Confidence & Escalation
     risk_score: float
@@ -205,34 +211,52 @@ def plan_actions(state: AgentState) -> Dict[str, Any]:
 
 
 def select_tool(state: AgentState) -> Dict[str, Any]:
-    """Node 6: Maps planned action steps to specific domain tool call."""
+    """Node 6: Maps planned action steps to specific domain tool call in TOOL_REGISTRY."""
     trajectory = list(state.get("trajectory", []))
     trajectory.append("select_tool")
 
     intent = state.get("intent", IntentType.UNKNOWN)
     entities = state.get("entities", {})
+    customer_id = state.get("customer_id") or 1
 
     tool_name = "general_support_responder"
     tool_args: Dict[str, Any] = {}
 
     if intent == IntentType.ORDER_TRACKING:
-        tool_name = "get_order_tracking_tool"
-        tool_args = {"order_id": entities.get("order_id")}
+        tool_name = "track_order"
+        tool_args = {"order_id": entities.get("order_id"), "customer_id": customer_id}
     elif intent == IntentType.REFUND_REQUEST:
-        tool_name = "process_refund_tool"
-        tool_args = {"order_id": entities.get("order_id"), "reason": entities.get("refund_reason")}
+        tool_name = "create_refund"
+        tool_args = {
+            "order_id": entities.get("order_id"),
+            "reason": entities.get("refund_reason") or "Customer requested refund",
+            "customer_id": customer_id
+        }
     elif intent == IntentType.ORDER_CANCELLATION:
-        tool_name = "process_cancellation_tool"
-        tool_args = {"order_id": entities.get("order_id")}
+        tool_name = "cancel_order"
+        tool_args = {
+            "order_id": entities.get("order_id"),
+            "reason": entities.get("refund_reason") or "Customer requested cancellation",
+            "customer_id": customer_id
+        }
     elif intent == IntentType.ADDRESS_UPDATE:
-        tool_name = "update_shipping_address_tool"
-        tool_args = {"order_id": entities.get("order_id"), "new_address": entities.get("new_address")}
+        tool_name = "update_address"
+        tool_args = {
+            "customer_id": customer_id,
+            "new_address": entities.get("new_address"),
+            "order_id": entities.get("order_id")
+        }
     elif intent == IntentType.PASSWORD_RESET:
-        tool_name = "request_password_reset_tool"
-        tool_args = {"email": entities.get("email")}
+        tool_name = "reset_password"
+        tool_args = {"customer_id": customer_id}
     elif intent == IntentType.TICKET_CREATION:
-        tool_name = "create_support_ticket_tool"
-        tool_args = {"reason": state.get("normalized_input")}
+        tool_name = "create_ticket"
+        tool_args = {
+            "customer_id": customer_id,
+            "channel": state.get("channel", "chat"),
+            "intent": "ticket_creation",
+            "escalation_reason": state.get("normalized_input") or "Customer requested ticket creation"
+        }
 
     return {
         "selected_tool": tool_name,
@@ -243,90 +267,78 @@ def select_tool(state: AgentState) -> Dict[str, Any]:
 
 def execute_tool(state: AgentState) -> Dict[str, Any]:
     """
-    Node 7: Executes the selected tool (Mocked/stubbed for Phase 6; full real tools in Phase 7).
+    Node 7: Executes the selected real domain tool through the Phase 2 API layer.
     """
     trajectory = list(state.get("trajectory", []))
     trajectory.append("execute_tool")
 
     tool_name = state.get("selected_tool")
-    tool_args = state.get("tool_args", {})
-    order_id = tool_args.get("order_id", 1042)
+    tool_args = dict(state.get("tool_args", {}))
+    customer_id = state.get("customer_id")
+    if customer_id and "customer_id" not in tool_args:
+        tool_args["customer_id"] = customer_id
 
-    # Mock tool execution responses
-    if tool_name == "get_order_tracking_tool":
-        tool_result = {
-            "status": "success",
-            "order_id": order_id,
-            "order_status": "in_transit",
-            "carrier": "FedEx Express",
-            "tracking_number": f"TRK-{order_id * 1000 + 4921}",
-            "expected_delivery": "Tomorrow by 5:00 PM",
-            "location": "Regional Sorting Facility, Chicago IL"
-        }
-    elif tool_name == "process_refund_tool":
-        tool_result = {
-            "status": "success",
-            "order_id": order_id,
-            "refund_id": 901,
-            "refund_amount": 129.99,
-            "message": f"Refund for Order #{order_id} approved."
-        }
-    elif tool_name == "process_cancellation_tool":
-        tool_result = {
-            "status": "success",
-            "order_id": order_id,
-            "message": f"Order #{order_id} cancelled successfully."
-        }
-    elif tool_name == "update_shipping_address_tool":
-        tool_result = {
-            "status": "success",
-            "order_id": order_id,
-            "new_address": tool_args.get("new_address"),
-            "message": "Shipping address updated."
-        }
-    elif tool_name == "request_password_reset_tool":
-        tool_result = {
-            "status": "success",
-            "email": tool_args.get("email"),
-            "message": "Password reset email dispatched."
-        }
-    elif tool_name == "create_support_ticket_tool":
-        tool_result = {
-            "status": "success",
-            "ticket_id": 412,
-            "message": "Priority ticket created."
-        }
+    # Filter None values from tool_args where appropriate
+    clean_args = {k: v for k, v in tool_args.items() if v is not None}
+
+    if tool_name and tool_name in TOOL_REGISTRY:
+        tool_func = TOOL_REGISTRY[tool_name]
+        try:
+            if hasattr(tool_func, "invoke"):
+                tool_result = tool_func.invoke(clean_args)
+            else:
+                tool_result = tool_func(**clean_args)
+        except Exception as exc:
+            tool_result = {
+                "success": False,
+                "status": "error",
+                "error": f"Tool execution exception: {str(exc)}"
+            }
     else:
         tool_result = {
+            "success": True,
             "status": "success",
             "message": "General query processed."
         }
 
     return {
         "tool_results": tool_result,
+        "tool_status": tool_result.get("status", "error"),
         "trajectory": trajectory
     }
 
 
 def validate_result(state: AgentState) -> Dict[str, Any]:
     """
-    Node 8: Validates tool output against policy and evaluates need for escalation.
+    Node 8: Validates tool output against policy and evaluates need for retry or escalation.
+    Never allows the agent to report success without a verified tool response.
     """
     trajectory = list(state.get("trajectory", []))
     trajectory.append("validate_result")
 
     tool_results = state.get("tool_results", {})
+    retry_count = state.get("retry_count", 0)
+
+    is_success = bool(tool_results.get("status") == "success" and tool_results.get("success") is not False)
+
     needs_escalation = False
+    needs_retry = False
     escalation_reason = None
     risk_score = 0.05
 
-    # If tool reported explicit failure or policy violation
-    if tool_results.get("status") == "error":
-        needs_escalation = True
-        escalation_reason = tool_results.get("error", "Tool execution failure")
-        risk_score = 0.85
+    if not is_success:
+        if retry_count < 1:
+            # Allow max 1 automatic retry
+            needs_retry = True
+            risk_score = 0.50
+        else:
+            # Exceeded retry limit -> Escalate
+            needs_escalation = True
+            escalation_reason = tool_results.get("error", "Tool execution failure after retry")
+            risk_score = 0.85
 
     return {
+        "needs_retry": needs_retry,
         "needs_escalation": needs_escalation,
         "escalation_reason": escalation_reason,
         "risk_score": risk_score,
@@ -334,19 +346,56 @@ def validate_result(state: AgentState) -> Dict[str, Any]:
     }
 
 
+def retry_tool(state: AgentState) -> Dict[str, Any]:
+    """Node: Increments retry counter before re-invoking the tool."""
+    trajectory = list(state.get("trajectory", []))
+    trajectory.append("retry_tool")
+
+    current_retries = state.get("retry_count", 0)
+    return {
+        "retry_count": current_retries + 1,
+        "needs_retry": False,
+        "trajectory": trajectory
+    }
+
+
 def route_after_validation(state: AgentState) -> str:
-    """Conditional Edge: Routes to human escalation if required, otherwise generates response."""
-    if state.get("needs_escalation", False):
+    """Conditional Edge: Routes to retry (max 1), escalation, or response generation."""
+    if state.get("needs_retry", False):
+        return "retry_tool"
+    elif state.get("needs_escalation", False):
         return "escalate"
     return "generate_response"
 
 
 def escalate(state: AgentState) -> Dict[str, Any]:
-    """Node: Handles handoff to human support representative."""
+    """Node: Handles handoff to human support representative with automatic ticket logging."""
     trajectory = list(state.get("trajectory", []))
     trajectory.append("escalate")
 
+    customer_id = state.get("customer_id") or 1
     reason = state.get("escalation_reason", "Complex inquiry requiring staff review")
+    channel = state.get("channel", "chat")
+    intent_val = state.get("intent", IntentType.UNKNOWN)
+    intent_str = intent_val.value if hasattr(intent_val, "value") else str(intent_val)
+
+    # Attempt to persist an escalation ticket
+    try:
+        ticket_payload = {
+            "customer_id": customer_id,
+            "channel": channel,
+            "intent": intent_str,
+            "escalation_reason": reason,
+            "actions_attempted": {"plan": state.get("plan", [])},
+            "tool_results": state.get("tool_results", {})
+        }
+        if hasattr(create_ticket, "invoke"):
+            create_ticket.invoke(ticket_payload)
+        else:
+            create_ticket(**ticket_payload)
+    except Exception:
+        pass
+
     response = f"I am escalating your request to our senior customer support team ({reason}). An agent will follow up shortly."
 
     return {
@@ -356,7 +405,7 @@ def escalate(state: AgentState) -> Dict[str, Any]:
 
 
 def generate_response(state: AgentState) -> Dict[str, Any]:
-    """Node 9: Synthesizes final user-facing response from plan and tool outputs."""
+    """Node 9: Synthesizes final user-facing response from plan and verified tool outputs."""
     trajectory = list(state.get("trajectory", []))
     trajectory.append("generate_response")
 
@@ -364,12 +413,12 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
     tool_results = state.get("tool_results", {})
 
     if intent == IntentType.ORDER_TRACKING:
-        order_id = tool_results.get("order_id", "N/A")
-        status = tool_results.get("order_status", "in_transit").replace("_", " ").upper()
-        carrier = tool_results.get("carrier", "Carrier")
-        trk = tool_results.get("tracking_number", "N/A")
-        eta = tool_results.get("expected_delivery", "Soon")
-        loc = tool_results.get("location", "In Transit")
+        order_id = tool_results.get("order_id", state.get("entities", {}).get("order_id", "N/A"))
+        status = str(tool_results.get("order_status") or "in_transit").replace("_", " ").upper()
+        carrier = tool_results.get("carrier") or "Carrier Express"
+        trk = tool_results.get("tracking_number") or f"TRK-{order_id}"
+        eta = tool_results.get("expected_delivery") or "Soon"
+        loc = tool_results.get("location") or "In Transit"
 
         response = (
             f"Here is the tracking status for Order #{order_id}:\n"
@@ -379,18 +428,22 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
             f"• Expected Delivery: {eta}"
         )
     elif intent == IntentType.REFUND_REQUEST:
-        order_id = tool_results.get("order_id", "N/A")
+        order_id = tool_results.get("order_id", state.get("entities", {}).get("order_id", "N/A"))
         amount = tool_results.get("refund_amount", 0.0)
-        response = f"Your refund request for Order #{order_id} of ${amount:.2f} has been approved and processed."
+        try:
+            amount_val = float(amount)
+        except Exception:
+            amount_val = 0.0
+        response = f"Your refund request for Order #{order_id} of ${amount_val:.2f} has been approved and processed."
     elif intent == IntentType.ORDER_CANCELLATION:
-        order_id = tool_results.get("order_id", "N/A")
+        order_id = tool_results.get("order_id", state.get("entities", {}).get("order_id", "N/A"))
         response = f"Order #{order_id} has been successfully cancelled. Any pending charges have been reversed."
     elif intent == IntentType.ADDRESS_UPDATE:
-        order_id = tool_results.get("order_id", "N/A")
+        order_id = tool_results.get("order_id", state.get("entities", {}).get("order_id", "N/A"))
         new_addr = tool_results.get("new_address", "")
         response = f"The shipping address for Order #{order_id} has been updated to: {new_addr}."
     elif intent == IntentType.PASSWORD_RESET:
-        email = tool_results.get("email", "your account email")
+        email = tool_results.get("email", state.get("entities", {}).get("email", "your account email"))
         response = f"A password reset link has been dispatched to {email}. Please check your inbox."
     elif intent == IntentType.TICKET_CREATION:
         ticket_id = tool_results.get("ticket_id", "N/A")
@@ -434,6 +487,7 @@ def build_agent_graph() -> Any:
     graph.add_node("select_tool", select_tool)
     graph.add_node("execute_tool", execute_tool)
     graph.add_node("validate_result", validate_result)
+    graph.add_node("retry_tool", retry_tool)
     graph.add_node("escalate", escalate)
     graph.add_node("generate_response", generate_response)
     graph.add_node("log_interaction", log_interaction)
@@ -461,15 +515,19 @@ def build_agent_graph() -> Any:
     graph.add_edge("select_tool", "execute_tool")
     graph.add_edge("execute_tool", "validate_result")
 
-    # Conditional Branch 2: Validation / Escalation Check
+    # Conditional Branch 2: Validation / Retry / Escalation Check
     graph.add_conditional_edges(
         "validate_result",
         route_after_validation,
         {
+            "retry_tool": "retry_tool",
             "escalate": "escalate",
             "generate_response": "generate_response"
         }
     )
+
+    # Retry loop connects back to execute_tool
+    graph.add_edge("retry_tool", "execute_tool")
 
     graph.add_edge("escalate", "log_interaction")
     graph.add_edge("generate_response", "log_interaction")
