@@ -19,11 +19,12 @@ def create_resilient_engine():
         return create_engine(db_uri, connect_args=connect_args)
 
     try:
-        test_engine = create_engine(db_uri, pool_pre_ping=True)
+        test_engine = create_engine(db_uri, pool_pre_ping=True, connect_args={"connect_timeout": 2})
         with test_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         logger.info(f"Connected successfully to PostgreSQL database ({settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}).")
         return test_engine
+
     except Exception as exc:
         logger.warning(
             f"PostgreSQL connection to {settings.POSTGRES_HOST}:{settings.POSTGRES_PORT} failed ({exc}). "

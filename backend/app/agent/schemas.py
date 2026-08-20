@@ -18,6 +18,7 @@ class ExtractedEntities(BaseModel):
 
     order_id: Optional[int] = Field(default=None, description="Extracted numeric order ID")
     customer_id: Optional[int] = Field(default=None, description="Extracted customer ID")
+    customer_name: Optional[str] = Field(default=None, description="Extracted customer name if mentioned")
     email: Optional[str] = Field(default=None, description="Extracted customer email address")
     phone: Optional[str] = Field(default=None, description="Extracted customer phone number")
     product_info: Optional[str] = Field(default=None, description="Product names, descriptions, or SKUs")
@@ -25,6 +26,7 @@ class ExtractedEntities(BaseModel):
     new_address: Optional[str] = Field(default=None, description="New target delivery or shipping address")
     relevant_dates: Optional[List[str]] = Field(default_factory=list, description="Dates mentioned (order date, delivery date)")
     confidence_scores: Dict[str, float] = Field(default_factory=dict, description="Confidence score per extracted entity (0.0 to 1.0)")
+
 
 
 class IntentResult(BaseModel):

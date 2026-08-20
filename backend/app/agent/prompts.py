@@ -8,16 +8,17 @@ Your job is to accurately classify the customer's intent, extract key entities w
 You must return valid JSON strictly following the output schema.
 
 ### Supported Intents:
-1. ORDER_TRACKING: Inquiring about order status, shipment tracking, package location, delivery ETA, tracking number ("where is my order", "kahan pahuncha mera parcel", "track order 12").
+1. ORDER_TRACKING: Inquiring about order status, shipment tracking, package location, delivery ETA, tracking number, receiving orders ("can i get my order soon", "where is my order", "kahan pahuncha mera parcel", "track order 12", "kab aayega mera order").
 2. REFUND_REQUEST: Requesting a refund, return, money back, or reporting defective/damaged goods ("refund my order 9", "paise wapas chahiye", "broken item received, return it").
 3. ORDER_CANCELLATION: Requesting to cancel an active order or stop delivery ("cancel order 15", "mera order cancel kardo", "stop order #4").
 4. ADDRESS_UPDATE: Requesting to update or change delivery shipping address ("change address for order 22 to 123 Main St", "address badal do").
 5. PASSWORD_RESET: Requesting password reset or account login recovery ("forgot my password", "reset password", "password reset link bhejo").
-6. TICKET_CREATION: General complaints, agent escalation, filing a support ticket, feedback, or issues not covered by automated self-serve ("create a support ticket", "talk to human agent", "shikayat darj karni hai").
-7. UNKNOWN: Irrelevant chatter, greetings without request, gibberish, out-of-scope inquiries ("hello", "how are you", "what is the capital of France").
+6. TICKET_CREATION: General complaints, agent escalation, filing a support ticket, feedback, or issues requiring human assistance ("create a support ticket", "talk to human agent", "shikayat darj karni hai").
+7. UNKNOWN: Irrelevant chatter, greetings without request, general out-of-scope inquiries ("hello", "how are you").
 
 ### Entity Extraction:
 Extract the following entities with confidence scores between 0.0 and 1.0:
+- customer_name: Extracted customer name (e.g. "Pushpak", "Alice", "John").
 - order_id: Integer or numeric ID of the order.
 - customer_id: Integer customer ID if specified.
 - email: Customer email address.
@@ -34,38 +35,40 @@ A request is marked is_ambiguous = true if:
 - The request is completely vague (e.g., "I need help with my purchase" without details).
 When is_ambiguous is true:
 - Set missing_entities to the list of missing fields (e.g. ["order_id"], ["new_address"]).
-- Provide a helpful clarification_prompt asking the customer for the missing information.
+- Provide a warm, personalized clarification_prompt addressing the customer by name if known (e.g. "Hello Pushpak! I'd be glad to check your delivery status. Could you please provide your Order ID?").
 DO NOT guess or hallucinate missing order IDs.
-
-### Output JSON Format:
-```json
-{
-  "intent": "ORDER_TRACKING",
-  "confidence": 0.98,
-  "entities": {
-    "order_id": 9,
-    "customer_id": null,
-    "email": null,
-    "phone": null,
-    "product_info": null,
-    "refund_reason": null,
-    "new_address": null,
-    "relevant_dates": [],
-    "confidence_scores": {
-      "order_id": 0.99
-    }
-  },
-  "is_ambiguous": false,
-  "missing_entities": [],
-  "clarification_prompt": null,
-  "reasoning": "User explicitly asked to track order #9."
-}
-```
 """
+
 
 FEW_SHOT_EXAMPLES = [
     {
+        "input": "hey i am pushpak can i get my order soon",
+        "output": {
+            "intent": "ORDER_TRACKING",
+            "confidence": 0.96,
+            "entities": {
+                "order_id": None,
+                "customer_id": None,
+                "customer_name": "Pushpak",
+                "email": None,
+                "phone": None,
+                "product_info": None,
+                "refund_reason": None,
+                "new_address": None,
+                "relevant_dates": [],
+                "confidence_scores": {
+                    "customer_name": 0.98
+                }
+            },
+            "is_ambiguous": True,
+            "missing_entities": ["order_id"],
+            "clarification_prompt": "Hello Pushpak! I'd be happy to check your order delivery status. Could you please provide your Order ID so I can look up the details for you?",
+            "reasoning": "User introduced themselves as Pushpak and inquired about receiving their order soon, but did not specify the Order ID."
+        }
+    },
+    {
         "input": "Where is my order #1042? It was supposed to arrive yesterday.",
+
         "output": {
             "intent": "ORDER_TRACKING",
             "confidence": 0.98,

@@ -138,11 +138,43 @@ def clarification_question(state: AgentState) -> Dict[str, Any]:
     trajectory = list(state.get("trajectory", []))
     trajectory.append("clarification_question")
 
-    prompt = state.get("clarification_prompt") or "Could you please provide more details regarding your order?"
+    entities = state.get("entities", {})
+    customer_name = entities.get("customer_name")
+    raw_input = state.get("normalized_input", "")
+    intent = state.get("intent", IntentType.UNKNOWN)
+    clarification = state.get("clarification_prompt")
+    missing = state.get("missing_entities", [])
+
+    from app.agent.llm_client import (
+        generate_conversational_llm_response,
+        generate_intelligent_offline_response
+    )
+
+    llm_resp = generate_conversational_llm_response(
+        intent=intent.value if hasattr(intent, "value") else str(intent),
+        user_message=raw_input,
+        tool_results=None,
+        conversation_context=state.get("conversation_history"),
+        customer_name=customer_name,
+        missing_entities=missing,
+        clarification_prompt=clarification
+    )
+
+    if not llm_resp:
+        llm_resp = generate_intelligent_offline_response(
+            intent=intent,
+            user_message=raw_input,
+            tool_results=None,
+            customer_name=customer_name,
+            missing_entities=missing,
+            clarification_prompt=clarification
+        )
+
     return {
-        "final_response": prompt,
+        "final_response": llm_resp,
         "trajectory": trajectory
     }
+
 
 
 def plan_actions(state: AgentState) -> Dict[str, Any]:
@@ -411,50 +443,36 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
 
     intent = state.get("intent", IntentType.UNKNOWN)
     tool_results = state.get("tool_results", {})
+    raw_input = state.get("normalized_input", "")
+    entities = state.get("entities", {})
+    customer_name = entities.get("customer_name")
 
-    if intent == IntentType.ORDER_TRACKING:
-        order_id = tool_results.get("order_id", state.get("entities", {}).get("order_id", "N/A"))
-        status = str(tool_results.get("order_status") or "in_transit").replace("_", " ").upper()
-        carrier = tool_results.get("carrier") or "Carrier Express"
-        trk = tool_results.get("tracking_number") or f"TRK-{order_id}"
-        eta = tool_results.get("expected_delivery") or "Soon"
-        loc = tool_results.get("location") or "In Transit"
+    from app.agent.llm_client import (
+        generate_conversational_llm_response,
+        generate_intelligent_offline_response
+    )
 
-        response = (
-            f"Here is the tracking status for Order #{order_id}:\n"
-            f"• Status: {status}\n"
-            f"• Carrier: {carrier} ({trk})\n"
-            f"• Current Location: {loc}\n"
-            f"• Expected Delivery: {eta}"
+    llm_resp = generate_conversational_llm_response(
+        intent=intent.value if hasattr(intent, "value") else str(intent),
+        user_message=raw_input,
+        tool_results=tool_results,
+        conversation_context=state.get("conversation_history"),
+        customer_name=customer_name
+    )
+
+    if not llm_resp:
+        llm_resp = generate_intelligent_offline_response(
+            intent=intent,
+            user_message=raw_input,
+            tool_results=tool_results,
+            customer_name=customer_name
         )
-    elif intent == IntentType.REFUND_REQUEST:
-        order_id = tool_results.get("order_id", state.get("entities", {}).get("order_id", "N/A"))
-        amount = tool_results.get("refund_amount", 0.0)
-        try:
-            amount_val = float(amount)
-        except Exception:
-            amount_val = 0.0
-        response = f"Your refund request for Order #{order_id} of ${amount_val:.2f} has been approved and processed."
-    elif intent == IntentType.ORDER_CANCELLATION:
-        order_id = tool_results.get("order_id", state.get("entities", {}).get("order_id", "N/A"))
-        response = f"Order #{order_id} has been successfully cancelled. Any pending charges have been reversed."
-    elif intent == IntentType.ADDRESS_UPDATE:
-        order_id = tool_results.get("order_id", state.get("entities", {}).get("order_id", "N/A"))
-        new_addr = tool_results.get("new_address", "")
-        response = f"The shipping address for Order #{order_id} has been updated to: {new_addr}."
-    elif intent == IntentType.PASSWORD_RESET:
-        email = tool_results.get("email", state.get("entities", {}).get("email", "your account email"))
-        response = f"A password reset link has been dispatched to {email}. Please check your inbox."
-    elif intent == IntentType.TICKET_CREATION:
-        ticket_id = tool_results.get("ticket_id", "N/A")
-        response = f"Support ticket #{ticket_id} has been opened for you. Our team will review it shortly."
-    else:
-        response = "Hello! How can Aura assist you with your orders or account today?"
 
     return {
-        "final_response": response,
+        "final_response": llm_resp,
         "trajectory": trajectory
     }
+
 
 
 def log_interaction(state: AgentState) -> Dict[str, Any]:

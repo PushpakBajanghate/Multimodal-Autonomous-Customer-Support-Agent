@@ -1,6 +1,7 @@
 """
 LLM Client for OpenAI and Google Gemini with configurable providers,
-structured JSON schema extraction, and deterministic fallback.
+structured JSON schema extraction, dynamic conversational generation,
+and intelligent contextual fallback.
 """
 
 import json
@@ -15,6 +16,16 @@ from app.agent.prompts import INTENT_SYSTEM_PROMPT, FEW_SHOT_EXAMPLES
 from app.agent.heuristics import analyze_utterance_rule_based
 
 logger = logging.getLogger("aura.agent.llm")
+
+# Reliable active Gemini models in order of priority
+GEMINI_CANDIDATE_MODELS = [
+    "gemini-flash-lite-latest",
+    "gemini-flash-latest",
+    "gemini-pro-latest",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash"
+]
+
 
 
 def _clean_json_markdown(text: str) -> str:
@@ -45,6 +56,7 @@ def _parse_llm_json_response(raw_text: str) -> Optional[AnalysisResult]:
         entities = ExtractedEntities(
             order_id=raw_entities.get("order_id"),
             customer_id=raw_entities.get("customer_id"),
+            customer_name=raw_entities.get("customer_name"),
             email=raw_entities.get("email"),
             phone=raw_entities.get("phone"),
             product_info=raw_entities.get("product_info"),
@@ -73,138 +85,11 @@ def _parse_llm_json_response(raw_text: str) -> Optional[AnalysisResult]:
         return None
 
 
-async def call_openai_async(
-    prompt_text: str,
-    conversation_context: Optional[List[Dict[str, Any]]] = None
-) -> Optional[AnalysisResult]:
-    """Calls OpenAI chat completions API for intent classification and entity extraction."""
-    api_key = settings.OPENAI_API_KEY
-    if not api_key:
-        logger.debug("OpenAI API key not configured, falling back to heuristics.")
-        return None
-
-    messages: List[Dict[str, str]] = [
-        {"role": "system", "content": INTENT_SYSTEM_PROMPT}
-    ]
-
-    # Add few-shot examples
-    for example in FEW_SHOT_EXAMPLES:
-        messages.append({"role": "user", "content": example["input"]})
-        messages.append({"role": "assistant", "content": json.dumps(example["output"])})
-
-    # Add conversation context if available
-    if conversation_context:
-        for ctx_msg in conversation_context:
-            role = "assistant" if ctx_msg.get("sender") in ("agent", "assistant") else "user"
-            messages.append({"role": role, "content": ctx_msg.get("text", "")})
-
-    # Current user utterance
-    messages.append({"role": "user", "content": prompt_text})
-
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": settings.OPENAI_MODEL,
-        "messages": messages,
-        "temperature": settings.LLM_TEMPERATURE,
-        "response_format": {"type": "json_object"}
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            if resp.status_code == 200:
-                body = resp.json()
-                content = body["choices"][0]["message"]["content"]
-                return _parse_llm_json_response(content)
-            else:
-                logger.error(f"OpenAI API error {resp.status_code}: {resp.text}")
-                return None
-    except Exception as exc:
-        logger.error(f"OpenAI connection error: {exc}")
-        return None
-
-
-async def call_gemini_async(
-    prompt_text: str,
-    conversation_context: Optional[List[Dict[str, Any]]] = None
-) -> Optional[AnalysisResult]:
-    """Calls Google Gemini REST API with structured JSON output."""
-    api_key = settings.GEMINI_API_KEY
-    if not api_key:
-        logger.debug("Gemini API key not configured, falling back to heuristics.")
-        return None
-
-    model = settings.GEMINI_MODEL or "gemini-1.5-flash"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-
-    # Build multi-turn contents
-    contents: List[Dict[str, Any]] = []
-
-    # Insert few-shots
-    for ex in FEW_SHOT_EXAMPLES:
-        contents.append({
-            "role": "user",
-            "parts": [{"text": ex["input"]}]
-        })
-        contents.append({
-            "role": "model",
-            "parts": [{"text": json.dumps(ex["output"])}]
-        })
-
-    # Insert conversation context
-    if conversation_context:
-        for ctx_msg in conversation_context:
-            role = "model" if ctx_msg.get("sender") in ("agent", "assistant") else "user"
-            contents.append({
-                "role": role,
-                "parts": [{"text": ctx_msg.get("text", "")}]
-            })
-
-    # Current user utterance
-    contents.append({
-        "role": "user",
-        "parts": [{"text": prompt_text}]
-    })
-
-    payload = {
-        "system_instruction": {
-            "parts": [{"text": INTENT_SYSTEM_PROMPT}]
-        },
-        "contents": contents,
-        "generationConfig": {
-            "temperature": settings.LLM_TEMPERATURE,
-            "response_mime_type": "application/json"
-        }
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(url, json=payload)
-            if resp.status_code == 200:
-                body = resp.json()
-                candidates = body.get("candidates", [])
-                if candidates:
-                    content_parts = candidates[0].get("content", {}).get("parts", [])
-                    if content_parts:
-                        raw_json = content_parts[0].get("text", "")
-                        return _parse_llm_json_response(raw_json)
-            else:
-                logger.error(f"Gemini API error {resp.status_code}: {resp.text}")
-                return None
-    except Exception as exc:
-        logger.error(f"Gemini connection error: {exc}")
-        return None
-
-
 def call_openai_sync(
     prompt_text: str,
     conversation_context: Optional[List[Dict[str, Any]]] = None
 ) -> Optional[AnalysisResult]:
-    """Synchronous wrapper for OpenAI API."""
+    """Synchronous OpenAI API call for intent analysis."""
     api_key = settings.OPENAI_API_KEY
     if not api_key:
         return None
@@ -236,7 +121,7 @@ def call_openai_sync(
     }
 
     try:
-        with httpx.Client(timeout=15.0) as client:
+        with httpx.Client(timeout=8.0) as client:
             resp = client.post(url, headers=headers, json=payload)
             if resp.status_code == 200:
                 body = resp.json()
@@ -252,13 +137,10 @@ def call_gemini_sync(
     prompt_text: str,
     conversation_context: Optional[List[Dict[str, Any]]] = None
 ) -> Optional[AnalysisResult]:
-    """Synchronous wrapper for Gemini REST API."""
+    """Synchronous Gemini REST API call with multi-model resilience."""
     api_key = settings.GEMINI_API_KEY
     if not api_key:
         return None
-
-    model = settings.GEMINI_MODEL or "gemini-1.5-flash"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
     contents: List[Dict[str, Any]] = []
     for ex in FEW_SHOT_EXAMPLES:
@@ -281,98 +163,32 @@ def call_gemini_sync(
         }
     }
 
-    try:
-        with httpx.Client(timeout=15.0) as client:
-            resp = client.post(url, json=payload)
-            if resp.status_code == 200:
-                body = resp.json()
-                candidates = body.get("candidates", [])
-                if candidates:
-                    content_parts = candidates[0].get("content", {}).get("parts", [])
-                    if content_parts:
-                        raw_json = content_parts[0].get("text", "")
-                        return _parse_llm_json_response(raw_json)
-            return None
-    except Exception as exc:
-        logger.error(f"Gemini sync call error: {exc}")
-        return None
+    models_to_try = [settings.GEMINI_MODEL] if settings.GEMINI_MODEL in GEMINI_CANDIDATE_MODELS else []
+    for m in GEMINI_CANDIDATE_MODELS:
+        if m not in models_to_try:
+            models_to_try.append(m)
 
-
-def generate_natural_llm_response(
-    intent: str,
-    tool_results: Dict[str, Any],
-    user_message: str,
-    conversation_context: Optional[List[Dict[str, Any]]] = None
-) -> Optional[str]:
-    """
-    Generates a grounded, natural conversational response using the active LLM.
-    Strictly instructs the model to adhere to the provided tool execution output without hallucination.
-    """
-    provider = (settings.LLM_PROVIDER or "").lower().strip()
-    system_prompt = (
-        "You are Aura, an autonomous, highly professional and empathetic customer support agent. "
-        "Your task is to synthesize a helpful, warm, and clear customer response based STRICTLY "
-        "on the verified tool results and data provided below. Do NOT hallucinate or alter tracking numbers, "
-        "dates, amounts, or policies. Keep the response concise, formatted nicely with bullet points where appropriate."
-    )
-
-    context_str = json.dumps(tool_results, default=str)
-    prompt = (
-        f"Customer Intent: {intent}\n"
-        f"Verified Tool & Domain Results: {context_str}\n"
-        f"Customer Inquiry: \"{user_message}\"\n\n"
-        "Generate the final response to the customer:"
-    )
-
-    # 1. Try Gemini
-    if provider == "gemini" and settings.GEMINI_API_KEY:
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         try:
-            model = settings.GEMINI_MODEL or "gemini-3.6-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
-            payload = {
-                "system_instruction": {"parts": [{"text": system_prompt}]},
-                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 500
-                }
-            }
-            with httpx.Client(timeout=10.0) as client:
+            with httpx.Client(timeout=8.0) as client:
                 resp = client.post(url, json=payload)
                 if resp.status_code == 200:
                     body = resp.json()
                     candidates = body.get("candidates", [])
                     if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts:
-                            return parts[0].get("text", "").strip()
+                        content_parts = candidates[0].get("content", {}).get("parts", [])
+                        if content_parts:
+                            raw_json = content_parts[0].get("text", "")
+                            parsed = _parse_llm_json_response(raw_json)
+                            if parsed:
+                                return parsed
+                elif resp.status_code in (404, 400):
+                    # Try next candidate model
+                    continue
         except Exception as exc:
-            logger.warning(f"Gemini natural response generation failed: {exc}")
-
-    # 2. Try OpenAI
-    if provider == "openai" and settings.OPENAI_API_KEY:
-        try:
-            url = "https://api.openai.com/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": settings.OPENAI_MODEL,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.2,
-                "max_tokens": 500
-            }
-            with httpx.Client(timeout=10.0) as client:
-                resp = client.post(url, headers=headers, json=payload)
-                if resp.status_code == 200:
-                    body = resp.json()
-                    return body["choices"][0]["message"]["content"].strip()
-        except Exception as exc:
-            logger.warning(f"OpenAI natural response generation failed: {exc}")
+            logger.debug(f"Gemini sync call error on {model}: {exc}")
+            continue
 
     return None
 
@@ -392,6 +208,10 @@ def execute_llm_intent_pipeline(
         result = call_gemini_sync(text, conversation_context)
     elif provider == "openai" and settings.OPENAI_API_KEY:
         result = call_openai_sync(text, conversation_context)
+    elif settings.GEMINI_API_KEY:
+        result = call_gemini_sync(text, conversation_context)
+    elif settings.OPENAI_API_KEY:
+        result = call_openai_sync(text, conversation_context)
 
     # If LLM execution succeeded, return result
     if result is not None:
@@ -399,3 +219,293 @@ def execute_llm_intent_pipeline(
 
     # Otherwise fallback to high-accuracy rule-based heuristics
     return analyze_utterance_rule_based(text, conversation_context)
+
+
+def generate_conversational_llm_response(
+    intent: str,
+    user_message: str,
+    tool_results: Optional[Dict[str, Any]] = None,
+    conversation_context: Optional[List[Dict[str, Any]]] = None,
+    customer_name: Optional[str] = None,
+    customer_orders: Optional[List[Dict[str, Any]]] = None,
+    missing_entities: Optional[List[str]] = None,
+    clarification_prompt: Optional[str] = None
+) -> Optional[str]:
+    """
+    Synthesizes a fluent, empathetic, and intelligent conversational reply using active LLM (Gemini or OpenAI).
+    Adheres strictly to verified domain facts and policies.
+    """
+    provider = (settings.LLM_PROVIDER or "").lower().strip()
+    api_key = settings.GEMINI_API_KEY if provider == "gemini" else settings.OPENAI_API_KEY
+    if not api_key:
+        api_key = settings.GEMINI_API_KEY or settings.OPENAI_API_KEY
+        if settings.GEMINI_API_KEY:
+            provider = "gemini"
+        elif settings.OPENAI_API_KEY:
+            provider = "openai"
+
+    if not api_key:
+        return None
+
+    system_prompt = (
+        "You are Aura, an autonomous, highly empathetic, articulate, and intelligent AI customer support assistant. "
+        "Your goal is to understand the customer's intent and meaning deeply and answer their inquiry directly, warmly, and concisely.\n"
+        "Guidelines:\n"
+        "1. Address the customer by name if known (e.g. 'Hello Pushpak!').\n"
+        "2. If domain/tool results or active orders are provided, use those exact verified facts (order status, carrier, tracking number, ETA, amounts). Do NOT hallucinate order IDs or change delivery dates.\n"
+        "3. If information is missing (e.g. order ID needed for tracking), ask for it politely and clearly explain how you will help once provided.\n"
+        "4. Keep responses structured, helpful, and natural. Avoid repeating canned capability bullet lists unless the user explicitly asks what you can do."
+    )
+
+    context_payload = {
+        "customer_name": customer_name,
+        "intent": intent,
+        "verified_tool_results": tool_results or {},
+        "customer_active_orders": customer_orders or [],
+        "missing_information": missing_entities or [],
+        "suggested_clarification": clarification_prompt
+    }
+
+    user_prompt = (
+        f"Context & Verified Domain Data: {json.dumps(context_payload, default=str)}\n"
+        f"Customer Message: \"{user_message}\"\n\n"
+        "Generate your direct, empathetic conversational response to the customer:"
+    )
+
+    # 1. Try Gemini
+    if provider == "gemini" and settings.GEMINI_API_KEY:
+        models_to_try = [settings.GEMINI_MODEL] if settings.GEMINI_MODEL in GEMINI_CANDIDATE_MODELS else []
+        for m in GEMINI_CANDIDATE_MODELS:
+            if m not in models_to_try:
+                models_to_try.append(m)
+
+        for model in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
+            payload = {
+                "system_instruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 350
+                }
+            }
+            try:
+                with httpx.Client(timeout=8.0) as client:
+                    resp = client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        body = resp.json()
+                        candidates = body.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts:
+                                return parts[0].get("text", "").strip()
+            except Exception as exc:
+                logger.debug(f"Gemini conversational generation error on {model}: {exc}")
+                continue
+
+    # 2. Try OpenAI
+    if provider == "openai" and settings.OPENAI_API_KEY:
+        try:
+            url = "https://api.openai.com/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": settings.OPENAI_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.3,
+                "max_tokens": 350
+            }
+            with httpx.Client(timeout=8.0) as client:
+                resp = client.post(url, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    body = resp.json()
+                    return body["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            logger.debug(f"OpenAI conversational generation error: {exc}")
+
+    return None
+
+
+def generate_natural_llm_response(
+    intent: str,
+    tool_results: Dict[str, Any],
+    user_message: str,
+    conversation_context: Optional[List[Dict[str, Any]]] = None
+) -> Optional[str]:
+    """Compatibility wrapper for generate_conversational_llm_response."""
+    return generate_conversational_llm_response(
+        intent=intent,
+        user_message=user_message,
+        tool_results=tool_results,
+        conversation_context=conversation_context
+    )
+
+
+def generate_intelligent_offline_response(
+    intent: IntentType,
+    user_message: str,
+    tool_results: Optional[Dict[str, Any]] = None,
+    customer_name: Optional[str] = None,
+    customer_orders: Optional[List[Dict[str, Any]]] = None,
+    missing_entities: Optional[List[str]] = None,
+    clarification_prompt: Optional[str] = None
+) -> str:
+    """
+    Intelligent contextual response generator when LLM API keys are offline/unavailable.
+    Dynamically crafts personalized, contextual replies recognizing user identity and intent,
+    without outputting static canned menus.
+    """
+    greeting = f"Hello {customer_name}! " if customer_name else "Hello! "
+    msg_lower = user_message.lower().strip()
+
+    # 1. Order Tracking
+    if intent == IntentType.ORDER_TRACKING:
+        if tool_results and tool_results.get("status") == "success":
+            t = tool_results.get("tracking") or tool_results
+            order_id = t.get("order_id", "N/A")
+            status_str = str(t.get("status", "in_transit")).upper()
+            carrier = t.get("carrier", "Carrier Express")
+            trk_num = t.get("tracking_number", "N/A")
+            exp_date = t.get("expected_delivery_str", "Estimated Soon")
+            days_left = t.get("estimated_days_remaining", 0)
+            eta_detail = f"Estimated {days_left} day(s) remaining." if days_left > 0 else "Delivery is progressing on schedule."
+            if t.get("is_delivered"):
+                eta_detail = "This package has been successfully delivered."
+
+            return (
+                f"{greeting}Here is the latest tracking update for Order #{order_id}:\n\n"
+                f"• Status: {status_str}\n"
+                f"• Carrier: {carrier} (Tracking: {trk_num})\n"
+                f"• Expected Delivery: {exp_date}\n"
+                f"• Note: {eta_detail}\n\n"
+                f"Please let me know if you need anything else!"
+            )
+        elif customer_orders and len(customer_orders) > 0:
+            # If customer has active orders, show them
+            recent_order = customer_orders[0]
+            oid = recent_order.get("id")
+            st = str(recent_order.get("status", "")).upper()
+            exp = recent_order.get("expected_delivery_str", "Upcoming")
+            return (
+                f"{greeting}I looked up your account and found your active Order #{oid} (Status: {st}, Expected Delivery: {exp}).\n\n"
+                f"Would you like full tracking details for Order #{oid}, or are you inquiring about a different order number?"
+            )
+        else:
+            return (
+                f"{greeting}I'd be glad to check your delivery timeline and order status. "
+                f"Could you please provide your Order ID (for example, Order #1) so I can look up the exact delivery schedule for you?"
+            )
+
+    # 2. Refund Request
+    elif intent == IntentType.REFUND_REQUEST:
+        if tool_results and tool_results.get("success"):
+            r = tool_results.get("refund") or tool_results
+            order_id = r.get("order_id", "N/A")
+            amt = float(r.get("amount", 0.0))
+            return (
+                f"{greeting}Your refund request for Order #{order_id} has been approved for ${amt:.2f}.\n\n"
+                f"• Refund Status: Processed\n"
+                f"• Expected Timeline: 3 to 5 business days back to your original payment method."
+            )
+        elif tool_results and not tool_results.get("success"):
+            err = tool_results.get("error", "The order is not eligible for refund.")
+            return f"{greeting}I checked your request, but {err}"
+        else:
+            return (
+                f"{greeting}Our return policy allows full refunds within 30 days of delivery for delivered or cancelled items. "
+                f"Please provide your Order ID and the reason for the refund so I can process this for you right away."
+            )
+
+    # 3. Order Cancellation
+    elif intent == IntentType.ORDER_CANCELLATION:
+        if tool_results and tool_results.get("success"):
+            order_id = tool_results.get("order_id", "N/A")
+            return (
+                f"{greeting}Order #{order_id} has been successfully cancelled. "
+                f"Any pending charges have been released and no further action is required."
+            )
+        elif tool_results and not tool_results.get("success"):
+            err = tool_results.get("error", "The order cannot be cancelled at this stage.")
+            return f"{greeting}{err}"
+        else:
+            return (
+                f"{greeting}Orders can be cancelled while in 'placed' status prior to shipping. "
+                f"Please tell me which Order ID you would like to cancel."
+            )
+
+    # 4. Address Update
+    elif intent == IntentType.ADDRESS_UPDATE:
+        if tool_results and tool_results.get("success"):
+            order_id = tool_results.get("order_id")
+            new_addr = tool_results.get("new_address", "")
+            target = f"for Order #{order_id}" if order_id else "on your account"
+            return f"{greeting}The destination shipping address {target} has been updated to:\n• {new_addr}"
+        elif tool_results and not tool_results.get("success"):
+            err = tool_results.get("error", "Unable to update shipping address.")
+            return f"{greeting}{err}"
+        else:
+            return (
+                f"{greeting}I can help update your shipping destination address. "
+                f"Please provide your Order ID along with the complete new delivery address."
+            )
+
+    # 5. Password Reset
+    elif intent == IntentType.PASSWORD_RESET:
+        if tool_results and tool_results.get("success"):
+            email = tool_results.get("email", "your account email")
+            return (
+                f"{greeting}A secure password reset link has been dispatched to {email}. "
+                f"Please check your inbox (and spam folder) within the next 15 minutes."
+            )
+        else:
+            return (
+                f"{greeting}Please provide the email address associated with your account so I can send you a password reset link."
+            )
+
+    # 6. Ticket Creation
+    elif intent == IntentType.TICKET_CREATION:
+        if tool_results and tool_results.get("success"):
+            tid = tool_results.get("ticket_id", "N/A")
+            return (
+                f"{greeting}I have created priority support ticket #{tid} for you. "
+                f"A member of our human support team will review your inquiry and follow up shortly."
+            )
+        else:
+            return (
+                f"{greeting}I can open a support ticket for our human customer care team. "
+                f"Please share the details of the issue you are experiencing."
+            )
+
+    # 7. General / Introductions / Inquiries
+    else:
+        if customer_name:
+            return (
+                f"Hello {customer_name}! It's a pleasure to assist you. "
+                f"I am Aura, your autonomous customer support assistant. How can I help you today with your orders, tracking, or account?"
+            )
+        elif any(w in msg_lower for w in ["hi", "hello", "hey", "good morning", "good evening"]):
+            return (
+                f"Hello! I am Aura, your customer support assistant. "
+                f"How can I help you today with your orders, returns, tracking, or account?"
+            )
+        elif any(w in msg_lower for w in ["who are you", "what can you do", "help"]):
+            return (
+                f"I am Aura, an autonomous customer support AI. I can assist you with:\n"
+                f"• Real-time order tracking and delivery ETAs\n"
+                f"• Return and refund requests\n"
+                f"• Order cancellations\n"
+                f"• Shipping address updates\n"
+                f"• Account recovery and human agent escalation\n\n"
+                f"How may I assist you today?"
+            )
+        else:
+            return (
+                f"Thank you for contacting customer support. I am here to assist you with order inquiries, shipments, refunds, and account updates. "
+                f"Could you please share your Order ID or describe what you need help with?"
+            )
+

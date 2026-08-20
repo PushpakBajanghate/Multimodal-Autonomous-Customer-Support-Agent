@@ -18,9 +18,12 @@ router = APIRouter()
 
 @router.post("/customer-session", response_model=ApiResponse[CustomerSessionRead])
 def create_customer_session(
-    payload: CustomerSessionCreate,
+    payload: Optional[CustomerSessionCreate] = None,
     db: Session = Depends(get_db)
 ):
+    if payload is None:
+        payload = CustomerSessionCreate()
+
     """
     Lightweight customer session creation for Chat/Voice channel.
     Allows customers to ask inquiries (e.g. 'Where is my order') without full password login.

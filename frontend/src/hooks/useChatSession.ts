@@ -26,28 +26,15 @@ const INITIAL_GREETING: ChatMessage = {
 };
 
 function getInitialConversationId(): number | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(STORAGE_CONV_ID);
-    if (!raw) return null;
-    const parsed = parseInt(raw, 10);
-    return isNaN(parsed) ? null : parsed;
-  } catch {
-    return null;
-  }
+  // Always start a brand new session on application open
+  return null;
 }
 
 function getInitialMessages(): ChatMessage[] {
-  if (typeof window === 'undefined') return [INITIAL_GREETING];
-  try {
-    const raw = localStorage.getItem(STORAGE_MESSAGES);
-    if (!raw) return [INITIAL_GREETING];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [INITIAL_GREETING];
-  } catch {
-    return [INITIAL_GREETING];
-  }
+  // Always start with the clean welcome greeting on application open
+  return [INITIAL_GREETING];
 }
+
 
 function getInitialSavedSessions(): number[] {
   if (typeof window === 'undefined') return [];
@@ -118,9 +105,15 @@ export function useChatSession(): UseChatSessionReturn {
     }
   }, []);
 
-  // On initial mount: check health and sync remote history if session id exists
+  // On initial mount: reset active session cache to guarantee fresh session and check health
   useEffect(() => {
     let isMounted = true;
+    try {
+      localStorage.removeItem(STORAGE_CONV_ID);
+      localStorage.removeItem(STORAGE_MESSAGES);
+    } catch {
+      // Ignore storage errors
+    }
 
     checkBackendHealth()
       .then((isHealthy) => {
@@ -133,6 +126,7 @@ export function useChatSession(): UseChatSessionReturn {
           setBackendOnline(false);
         }
       });
+
 
     if (!hasHydratedRemote.current && conversationId !== null) {
       hasHydratedRemote.current = true;

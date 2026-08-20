@@ -1,14 +1,18 @@
 """
 Agent Response Engine: Orchestrates NLU intent analysis, domain service execution,
-and intelligent conversational responses.
+and intelligent conversational responses powered by LLM Reasoning Brain.
 """
 
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 
+from app.models.models import Customer, Order
 from app.agent.intent import analyze_utterance
 from app.agent.schemas import IntentType, AnalysisResult
-from app.agent.llm_client import generate_natural_llm_response
+from app.agent.llm_client import (
+    generate_conversational_llm_response,
+    generate_intelligent_offline_response
+)
 from app.services.order_service import (
     get_order_tracking,
     process_refund,
@@ -30,7 +34,7 @@ def generate_agent_response(
 ) -> str:
     """
     Executes real intent recognition, entity extraction, domain business logic,
-    and returns a contextual, dynamic agent response.
+    and returns a contextual, dynamic, empathetic LLM agent response.
     """
     # 1. Run LLM / NLU Intent Recognition & Entity Extraction
     analysis: AnalysisResult = analyze_utterance(
@@ -40,107 +44,136 @@ def generate_agent_response(
 
     intent = analysis.intent
     entities = analysis.entities
-    resolved_customer_id = customer_id or 1
+    resolved_customer_id = customer_id or entities.customer_id or 1
 
-    # 2. Check for Ambiguity / Incomplete Parameters
-    if analysis.is_ambiguous and analysis.clarification_prompt:
-        return analysis.clarification_prompt
+    # 2. Identify customer profile and active orders from DB
+    customer_name = entities.customer_name
+    customer_orders_data: List[Dict[str, Any]] = []
 
-    # 3. Dispatch to Domain Logic based on Intent
-    if intent == IntentType.ORDER_TRACKING:
-        order_id = entities.order_id
-        if order_id is None:
-            return "Could you please specify your Order ID so I can look up the tracking information?"
+    try:
+        db_customer = db.query(Customer).filter(Customer.id == resolved_customer_id).first()
+        if db_customer:
+            if not customer_name:
+                customer_name = db_customer.name.split()[0] if db_customer.name else None
 
-        success, error, tracking = get_order_tracking(db, order_id)
-        if not success or not tracking:
-            return f"I looked up Order #{order_id}, but {error or 'it was not found in our system'}. Please double check the order number."
+            db_orders = db.query(Order).filter(Order.customer_id == db_customer.id).order_by(Order.order_date.desc()).all()
+            for o in db_orders:
+                exp_str = o.expected_delivery.strftime("%B %d, %Y") if o.expected_delivery else "Pending"
+                customer_orders_data.append({
+                    "id": o.id,
+                    "status": o.status,
+                    "total_amount": float(o.total_amount) if o.total_amount else 0.0,
+                    "expected_delivery_str": exp_str,
+                    "is_editable": o.is_editable
+                })
+    except Exception:
+        pass
 
-        status_str = tracking["status"].upper()
-        carrier = tracking.get("carrier", "Carrier Express")
-        trk_num = tracking.get("tracking_number", "N/A")
-        exp_date = tracking["expected_delivery"].strftime("%B %d, %Y") if tracking.get("expected_delivery") else "Pending"
-        
-        days_left = tracking.get("estimated_days_remaining", 0)
-        eta_note = f"Estimated {days_left} day(s) remaining." if days_left > 0 else "Delivery is on schedule."
-        if tracking.get("is_delivered"):
-            eta_note = "Package has been successfully delivered."
+    # If order_id not in entities but customer has exactly 1 active order, we can relate it
+    target_order_id = entities.order_id
+    if target_order_id is None and len(customer_orders_data) == 1 and intent in (IntentType.ORDER_TRACKING, IntentType.REFUND_REQUEST, IntentType.ORDER_CANCELLATION):
+        target_order_id = customer_orders_data[0]["id"]
 
-        return (
-            f"Here is the tracking status for Order #{order_id}:\n"
-            f"• Status: {status_str}\n"
-            f"• Carrier: {carrier} (Tracking: {trk_num})\n"
-            f"• Expected Delivery: {exp_date}\n"
-            f"• Details: {eta_note}"
-        )
+    tool_results: Optional[Dict[str, Any]] = None
 
-    elif intent == IntentType.REFUND_REQUEST:
-        order_id = entities.order_id
-        if order_id is None:
-            return "Please provide your Order ID and the reason for refund so I can process it for you."
+    # 3. Dispatch to Domain Logic based on Intent if parameters are present
+    if intent == IntentType.ORDER_TRACKING and target_order_id is not None:
+        success, error, tracking = get_order_tracking(db, target_order_id)
+        if success and tracking:
+            exp_date = tracking["expected_delivery"].strftime("%B %d, %Y") if tracking.get("expected_delivery") else "Pending"
+            tool_results = {
+                "success": True,
+                "status": "success",
+                "tracking": {
+                    "order_id": target_order_id,
+                    "status": tracking.get("status"),
+                    "carrier": tracking.get("carrier"),
+                    "tracking_number": tracking.get("tracking_number"),
+                    "expected_delivery_str": exp_date,
+                    "estimated_days_remaining": tracking.get("estimated_days_remaining", 0),
+                    "is_delivered": tracking.get("is_delivered", False)
+                }
+            }
+        else:
+            tool_results = {
+                "success": False,
+                "status": "error",
+                "error": error or f"Order #{target_order_id} was not found in our database."
+            }
 
+    elif intent == IntentType.REFUND_REQUEST and target_order_id is not None:
         reason = entities.refund_reason or message
-        success, error, refund = process_refund(db, order_id, reason=reason)
-        if not success or not refund:
-            return f"Unable to process refund for Order #{order_id}:\n{error}"
+        success, error, refund = process_refund(db, target_order_id, reason=reason)
+        if success and refund:
+            tool_results = {
+                "success": True,
+                "status": "success",
+                "refund": {
+                    "order_id": target_order_id,
+                    "amount": float(refund.amount),
+                    "reason": refund.reason,
+                    "status": refund.status
+                }
+            }
+        else:
+            tool_results = {
+                "success": False,
+                "status": "error",
+                "error": error or f"Unable to process refund for Order #{target_order_id}."
+            }
 
-        return (
-            f"Your refund request for Order #{order_id} has been APPROVED for ${refund.amount:.2f}.\n"
-            f"• Refund Status: {refund.status.capitalize()}\n"
-            f"• Reason Recorded: {refund.reason}\n"
-            f"The funds will be credited back to your original payment method within 3 to 5 business days."
-        )
-
-    elif intent == IntentType.ORDER_CANCELLATION:
-        order_id = entities.order_id
-        if order_id is None:
-            return "Please tell me which Order ID you would like to cancel."
-
+    elif intent == IntentType.ORDER_CANCELLATION and target_order_id is not None:
         reason = entities.refund_reason or message
-        success, error, cancellation = process_cancellation(db, order_id, reason=reason)
-        if not success or not cancellation:
-            return f"Unable to cancel Order #{order_id}:\n{error}"
+        success, error, cancellation = process_cancellation(db, target_order_id, reason=reason)
+        if success and cancellation:
+            tool_results = {
+                "success": True,
+                "status": "success",
+                "order_id": target_order_id,
+                "status_result": cancellation.status
+            }
+        else:
+            tool_results = {
+                "success": False,
+                "status": "error",
+                "error": error or f"Unable to cancel Order #{target_order_id}."
+            }
 
-        return (
-            f"Order #{order_id} has been successfully CANCELLED.\n"
-            f"• Status: {cancellation.status.capitalize()}\n"
-            f"• Confirmation: Any pending charges for this order have been voided/refunded."
-        )
-
-    elif intent == IntentType.ADDRESS_UPDATE:
-        order_id = entities.order_id
-        new_addr = entities.new_address
-
-        if not new_addr:
-            return "Please provide the complete new delivery address you would like to set."
-
+    elif intent == IntentType.ADDRESS_UPDATE and entities.new_address:
         success, error, addr_req = request_address_change(
             db=db,
             customer_id=resolved_customer_id,
-            new_address=new_addr,
-            order_id=order_id
+            new_address=entities.new_address,
+            order_id=target_order_id
         )
-        if not success or not addr_req:
-            return f"Unable to update shipping address:\n{error}"
-
-        target = f"for Order #{order_id}" if order_id else "on your account"
-        return (
-            f"The shipping destination address {target} has been updated successfully.\n"
-            f"• New Address: {new_addr}\n"
-            f"• Request Status: {addr_req.status.capitalize()}"
-        )
+        if success and addr_req:
+            tool_results = {
+                "success": True,
+                "status": "success",
+                "order_id": target_order_id,
+                "new_address": entities.new_address
+            }
+        else:
+            tool_results = {
+                "success": False,
+                "status": "error",
+                "error": error or "Unable to update shipping address."
+            }
 
     elif intent == IntentType.PASSWORD_RESET:
-        email = entities.email
         success, error, reset_req = request_password_reset(db=db, customer_id=resolved_customer_id)
-        if not success or not reset_req:
-            return f"Unable to initiate password reset:\n{error}"
-
-        target_email = email or "your registered account email"
-        return (
-            f"A secure password reset link has been dispatched to {target_email}.\n"
-            f"Please check your inbox (and spam folder) within the next 15 minutes to reset your password."
-        )
+        if success and reset_req:
+            tool_results = {
+                "success": True,
+                "status": "success",
+                "email": entities.email or "your account email"
+            }
+        else:
+            tool_results = {
+                "success": False,
+                "status": "error",
+                "error": error or "Unable to initiate password reset."
+            }
 
     elif intent == IntentType.TICKET_CREATION:
         success, error, ticket = create_escalation_ticket(
@@ -152,25 +185,42 @@ def generate_agent_response(
             tool_results={},
             escalation_reason=message
         )
-        if not success or not ticket:
-            return f"Could not create support ticket: {error}"
+        if success and ticket:
+            tool_results = {
+                "success": True,
+                "status": "success",
+                "ticket_id": ticket.id
+            }
+        else:
+            tool_results = {
+                "success": False,
+                "status": "error",
+                "error": error or "Could not create support ticket."
+            }
 
-        return (
-            f"I have opened a priority support ticket #{ticket.id} for you.\n"
-            f"• Topic: Customer Support Escalation\n"
-            f"• Status: Open\n"
-            f"A human support representative has been assigned and will follow up with you shortly."
-        )
+    # 4. Generate Conversational LLM Response
+    llm_reply = generate_conversational_llm_response(
+        intent=intent.value,
+        user_message=message,
+        tool_results=tool_results,
+        conversation_context=conversation_history,
+        customer_name=customer_name,
+        customer_orders=customer_orders_data,
+        missing_entities=analysis.missing_entities,
+        clarification_prompt=analysis.clarification_prompt
+    )
 
-    else:
-        # UNKNOWN or General Conversation
-        return (
-            f"Hello! I am Aura, your autonomous customer support assistant.\n"
-            f"I can help you with:\n"
-            f"• Tracking order delivery status\n"
-            f"• Processing refunds and returns\n"
-            f"• Cancelling active orders\n"
-            f"• Updating shipping addresses\n"
-            f"• Password reset and human support tickets\n\n"
-            f"How may I help you today?"
-        )
+    if llm_reply:
+        return llm_reply
+
+    # 5. Intelligent Dynamic Contextual Fallback Brain (Non-hardcoded)
+    return generate_intelligent_offline_response(
+        intent=intent,
+        user_message=message,
+        tool_results=tool_results,
+        customer_name=customer_name,
+        customer_orders=customer_orders_data,
+        missing_entities=analysis.missing_entities,
+        clarification_prompt=analysis.clarification_prompt
+    )
+

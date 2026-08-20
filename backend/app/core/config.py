@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = Field(default="postgres_secure_password_change_me")
     POSTGRES_DB: str = Field(default="customer_support_db")
     POSTGRES_HOST: str = Field(default="127.0.0.1")
-    POSTGRES_PORT: int = Field(default=5435)
+    POSTGRES_PORT: int = Field(default=5432)
+
 
     # Redis configurations
     REDIS_HOST: str = Field(default="127.0.0.1")
@@ -39,11 +40,12 @@ class Settings(BaseSettings):
 
     # LLM Agent Configuration
     LLM_PROVIDER: str = Field(default="gemini")  # "gemini", "openai", or "mock"
-    OPENAI_API_KEY: str | None = Field(default=None)
+    OPENAI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
     OPENAI_MODEL: str = Field(default="gpt-4o-mini")
-    GEMINI_API_KEY: str | None = Field(default=None)
-    GEMINI_MODEL: str = Field(default="gemini-3.6-flash")
-    LLM_TEMPERATURE: float = Field(default=0.1)
+    GEMINI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+    GEMINI_MODEL: str = Field(default="gemini-flash-lite-latest")
+    LLM_TEMPERATURE: float = Field(default=0.2)
+
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
@@ -58,3 +60,4 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+

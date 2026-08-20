@@ -126,8 +126,15 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
                 relevant_dates.append(d_word)
                 scores["relevant_dates"] = 0.85
 
+
+    # 8. Extract Customer Name
+    customer_name = _extract_customer_name(text)
+    if customer_name:
+        scores["customer_name"] = 0.95
+
     return ExtractedEntities(
         order_id=order_id,
+        customer_name=customer_name,
         email=email,
         phone=phone,
         product_info=product_info,
@@ -136,6 +143,8 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
         relevant_dates=relevant_dates,
         confidence_scores=scores
     )
+
+
 
 
 def classify_intent_rule_based(
@@ -186,13 +195,16 @@ def classify_intent_rule_based(
     if any(kw in t for kw in password_keywords):
         return IntentType.PASSWORD_RESET, 0.97, "Detected password reset or account recovery intent."
 
-    # 5. Order Tracking
+    # 5. Order Tracking & Delivery Inquiries
     tracking_keywords = [
         "track", "where is my order", "order status", "shipment", "delivery status",
         "kahan pahuncha", "kahan hai mera", "kab aayega", "parcel status",
-        "eta", "when will it arrive", "tracking info", "status of order", "track order"
+        "eta", "when will it arrive", "tracking info", "status of order", "track order",
+        "get my order", "order soon", "get order", "receive my order", "delivery soon",
+        "parcel kab", "order update", "check my order", "status of my order",
+        "when is my order", "package status", "when will my order", "can i get my order"
     ]
-    if any(kw in t for kw in tracking_keywords) or (("order" in t or "parcel" in t) and ("where" in t or "status" in t or "kahan" in t or "kab" in t)):
+    if any(kw in t for kw in tracking_keywords) or (("order" in t or "parcel" in t or "package" in t) and any(w in t for w in ["where", "status", "kahan", "kab", "when", "soon", "arrive", "get", "delivery", "track", "reach", "receive"])):
         return IntentType.ORDER_TRACKING, 0.95, "Detected order tracking / status lookup intent."
 
     # 6. Ticket Creation / Human Escalation
@@ -217,6 +229,21 @@ def classify_intent_rule_based(
     return IntentType.UNKNOWN, 0.70, "No recognized support intent keyword matched."
 
 
+def _extract_customer_name(text: str) -> Optional[str]:
+    """Helper to detect customer name from introductory phrases."""
+    name_patterns = [
+        r'(?:i am|my name is|this is|i\'m)\s+([A-Za-z]+)',
+        r'(?:naam\s+hai\s+|naam\s+mera\s+)([A-Za-z]+)'
+    ]
+    for pat in name_patterns:
+        match = re.search(pat, text, re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip().capitalize()
+            if candidate.lower() not in ["here", "looking", "trying", "wondering", "just", "calling", "writing", "a", "an", "the"]:
+                return candidate
+    return None
+
+
 def analyze_utterance_rule_based(
     text: str,
     conversation_context: Optional[List[Dict[str, Any]]] = None
@@ -224,6 +251,8 @@ def analyze_utterance_rule_based(
     """Combines intent classification, entity extraction, and ambiguity analysis."""
     intent, confidence, reasoning = classify_intent_rule_based(text, conversation_context)
     entities = extract_entities_rule_based(text)
+    user_name = _extract_customer_name(text)
+    greeting_prefix = f"Hello {user_name}! " if user_name else "Hello! "
 
     # Check conversation context if order_id was previously identified
     if entities.order_id is None and conversation_context:
@@ -244,11 +273,11 @@ def analyze_utterance_rule_based(
             is_ambiguous = True
             missing_entities.append("order_id")
             if intent == IntentType.ORDER_TRACKING:
-                clarification_prompt = "Could you please provide your Order ID (e.g. Order #123) so I can track the delivery status for you?"
+                clarification_prompt = f"{greeting_prefix}I'd be happy to check the tracking and estimated delivery for your package. Could you please share your Order ID (e.g. Order #1)?"
             elif intent == IntentType.ORDER_CANCELLATION:
-                clarification_prompt = "Could you please specify the Order ID you would like to cancel?"
+                clarification_prompt = f"{greeting_prefix}Could you please specify which Order ID you would like to cancel?"
             elif intent == IntentType.REFUND_REQUEST:
-                clarification_prompt = "Please share your Order ID and the reason for the return/refund so we can process your request."
+                clarification_prompt = f"{greeting_prefix}Please share your Order ID and the reason for the refund so I can process it for you."
 
     elif intent == IntentType.ADDRESS_UPDATE:
         if entities.order_id is None:
@@ -260,18 +289,17 @@ def analyze_utterance_rule_based(
 
         if is_ambiguous:
             if "order_id" in missing_entities and "new_address" in missing_entities:
-                clarification_prompt = "Please provide your Order ID along with the new shipping address you would like to update."
+                clarification_prompt = f"{greeting_prefix}Please provide your Order ID along with the new shipping destination address you would like to update."
             elif "order_id" in missing_entities:
-                clarification_prompt = "Which Order ID would you like to update the shipping address for?"
+                clarification_prompt = f"{greeting_prefix}Which Order ID would you like to update the shipping address for?"
             else:
-                clarification_prompt = "Please provide the complete new destination address for your order."
+                clarification_prompt = f"{greeting_prefix}Please provide the complete new destination address for your order."
 
     elif intent == IntentType.PASSWORD_RESET:
         if entities.email is None:
-            # If email is missing, ask for email
             is_ambiguous = True
             missing_entities.append("email")
-            clarification_prompt = "Please provide the email address associated with your account so we can send the password reset link."
+            clarification_prompt = f"{greeting_prefix}Please provide the email address associated with your account so we can dispatch the password reset link."
 
     return AnalysisResult(
         intent=intent,
