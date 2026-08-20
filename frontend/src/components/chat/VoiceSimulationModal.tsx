@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { synthesizeVoice } from '../../services/chatApi';
 
 interface VoiceSimulationModalProps {
   isOpen: boolean;
@@ -21,20 +22,57 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
   const [transcript, setTranscript] = useState('');
   const [agentSpokenResponse, setAgentSpokenResponse] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [languageMode, setLanguageMode] = useState<'auto' | 'hi-IN' | 'en-IN'>('auto');
+  const [voiceProvider, setVoiceProvider] = useState('browser');
+  const [voiceNotice, setVoiceNotice] = useState('');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const speakText = useCallback((text: string) => {
+  const detectLanguage = useCallback((text: string) => {
+    if (languageMode !== 'auto') return languageMode;
+    if (/[\u0900-\u097F]/.test(text) || /\b(mera|meri|mujhe|haan|nahi|kya|hai|cancel|karna|refund|paisa|kab|kahan)\b/i.test(text)) {
+      return 'hi-IN';
+    }
+    return 'en-IN';
+  }, [languageMode]);
+
+  const speakText = useCallback(async (text: string, spokenLanguage = 'auto') => {
+    const resolvedLanguage = detectLanguage(spokenLanguage === 'auto' ? text : spokenLanguage);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    try {
+      const generated = await synthesizeVoice(text, resolvedLanguage);
+      setVoiceProvider(generated.provider);
+      setVoiceNotice(generated.reason || '');
+      if (generated.audio_base64 && generated.audio_mime_type) {
+        const audio = new Audio(`data:${generated.audio_mime_type};base64,${generated.audio_base64}`);
+        audioRef.current = audio;
+        await audio.play();
+        return;
+      }
+    } catch (err) {
+      setVoiceProvider('browser');
+      setVoiceNotice(err instanceof Error ? err.message : 'Using browser voice fallback.');
+    }
+
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const clean = text.replace(/[•*#_`]/g, ' ');
       const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.rate = 1.05;
-      utterance.pitch = 1.0;
+      utterance.lang = resolvedLanguage;
+      utterance.rate = resolvedLanguage.startsWith('hi') ? 0.92 : 0.98;
+      utterance.pitch = 0.96;
+      const voices = window.speechSynthesis.getVoices();
+      const matchingVoice = voices.find(voice => voice.lang === resolvedLanguage) || voices.find(voice => voice.lang.startsWith(resolvedLanguage.slice(0, 2)));
+      if (matchingVoice) utterance.voice = matchingVoice;
       window.speechSynthesis.speak(utterance);
     }
-  }, []);
+  }, [detectLanguage]);
 
   const handleVoiceSubmit = useCallback(async (spokenText: string) => {
     if (!spokenText.trim()) return;
@@ -45,7 +83,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
       const response = await onSendVoiceTranscript(spokenText);
       if (response && typeof response === 'string') {
         setAgentSpokenResponse(response);
-        speakText(response);
+        await speakText(response, detectLanguage(spokenText));
       }
     } finally {
       setIsProcessing(false);
@@ -71,7 +109,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = 'en-US';
+      recognition.lang = languageMode === 'auto' ? 'hi-IN' : languageMode;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (event: any) => {
@@ -96,14 +134,19 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
 
       recognitionRef.current = recognition;
     }
-  }, [isCalling, isMuted, handleVoiceSubmit]);
+  }, [isCalling, isMuted, handleVoiceSubmit, languageMode]);
 
   const startCall = () => {
     setCallDuration(0);
     setIsCalling(true);
     setTranscript('');
     setAgentSpokenResponse('Connected to Aura Voice Gateway. Speak your inquiry into the microphone...');
-    speakText('Hello, you are connected to Aura Voice Support. How can I help you with your order today?');
+    speakText(
+      languageMode === 'hi-IN'
+        ? 'Namaste, aap Aura Voice Support se connected hain. Main aapki kaise madad kar sakti hoon?'
+        : 'Hello, you are connected to Aura Voice Support. How can I help you with your order today?',
+      languageMode
+    );
 
     if (recognitionRef.current && !isMuted) {
       try {
@@ -118,6 +161,10 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
     setIsCalling(false);
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
     }
     if (recognitionRef.current) {
       try {
@@ -173,6 +220,29 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
           {isCalling ? `Active Call • ${formatDuration(callDuration)} (Session #${conversationId || 'New'})` : 'Omnichannel Voice Telephony Simulation'}
         </p>
 
+        {!isCalling && (
+          <div className="grid grid-cols-2 gap-2 w-full mt-4 text-left">
+            <label className="text-[11px] text-slate-400">
+              Speech Language
+              <select
+                value={languageMode}
+                onChange={event => setLanguageMode(event.target.value as 'auto' | 'hi-IN' | 'en-IN')}
+                className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 px-2 py-2 text-xs text-slate-200 outline-none focus:border-blue-500"
+              >
+                <option value="auto">Auto Hindi/English</option>
+                <option value="hi-IN">Hindi / Hinglish</option>
+                <option value="en-IN">English India</option>
+              </select>
+            </label>
+            <div className="text-[11px] text-slate-400">
+              Voice Engine
+              <div className="mt-1 rounded-lg bg-slate-950 border border-slate-800 px-2 py-2 text-xs text-slate-200 min-h-[34px]">
+                {voiceProvider}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Live Audio Waveform Simulation */}
         {isCalling && (
           <div className="flex items-center justify-center gap-1.5 my-4 h-8">
@@ -208,6 +278,11 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
               {agentSpokenResponse}
             </div>
           )}
+          {voiceNotice && (
+            <div className="text-[11px] text-amber-300 mt-2 pt-2 border-t border-slate-800">
+              {voiceNotice}
+            </div>
+          )}
         </div>
 
         {/* Preset Voice Prompt Shortcuts */}
@@ -217,6 +292,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
             <div className="flex flex-wrap gap-1.5">
               {[
                 "Where is my order #1?",
+                "Mera order #1 kahan hai?",
                 "Refund order #2 broken item",
                 "Cancel my active order #1"
               ].map((query, idx) => (

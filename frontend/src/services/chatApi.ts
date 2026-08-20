@@ -3,7 +3,8 @@ import {
   ChatApiRequestPayload,
   ChatResponseData,
   ConversationMessageReadData,
-  ConversationReadData
+  ConversationReadData,
+  VoiceSynthesisResponseData
 } from '../types/chat';
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000/api/v1';
@@ -225,6 +226,56 @@ export async function createNewConversation(
       0,
       message
     );
+  }
+}
+
+/**
+ * Generates provider-backed voice audio for the agent response when Sarvam or ElevenLabs is configured.
+ */
+export async function synthesizeVoice(
+  text: string,
+  languageCode = 'auto'
+): Promise<VoiceSynthesisResponseData> {
+  try {
+    const res = await authFetch(`${API_BASE}/voice/synthesize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        language_code: languageCode
+      })
+    });
+    const data: ApiResponseWrapper<VoiceSynthesisResponseData> = await res.json().catch(() => ({
+      success: false,
+      status: 'failure',
+      reason: `HTTP ${res.status}`,
+      data: {
+        provider: 'browser',
+        language_code: languageCode,
+        audio_base64: null,
+        audio_mime_type: 'audio/wav',
+        fallback_to_browser: true,
+        reason: `HTTP ${res.status}`
+      }
+    }));
+
+    if (!res.ok || !data.success) {
+      throw new ChatApiError(
+        data.reason || `Failed to synthesize voice (${res.status})`,
+        res.status,
+        data.reason || res.statusText
+      );
+    }
+
+    return data.data;
+  } catch (err: unknown) {
+    if (err instanceof ChatApiError) {
+      throw err;
+    }
+    const message = err instanceof Error ? err.message : 'Network error';
+    throw new ChatApiError(`Voice synthesis unavailable: ${message}`, 0, message);
   }
 }
 

@@ -46,6 +46,26 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = Field(default="gemini-flash-lite-latest")
     LLM_TEMPERATURE: float = Field(default=0.2)
 
+    # Human voice and outbound calling
+    VOICE_PROVIDER: str = Field(default="sarvam")  # "sarvam", "elevenlabs", or "browser"
+    PUBLIC_BASE_URL: str | None = Field(default=None)
+
+    SARVAM_API_KEY: str | None = Field(default_factory=lambda: os.getenv("SARVAM_API_KEY"))
+    SARVAM_TTS_URL: str = Field(default="https://api.sarvam.ai/text-to-speech")
+    SARVAM_TTS_MODEL: str = Field(default="bulbul:v3")
+    SARVAM_HINDI_SPEAKER: str = Field(default="anushka")
+    SARVAM_ENGLISH_SPEAKER: str = Field(default="shubh")
+    SARVAM_OUTPUT_CODEC: str = Field(default="wav")
+    SARVAM_SAMPLE_RATE: int = Field(default=24000)
+
+    ELEVENLABS_API_KEY: str | None = Field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY"))
+    ELEVENLABS_TTS_URL: str = Field(default="https://api.elevenlabs.io/v1/text-to-speech")
+    ELEVENLABS_VOICE_ID: str = Field(default="21m00Tcm4TlvDq8ikWAM")
+    ELEVENLABS_MODEL_ID: str = Field(default="eleven_multilingual_v2")
+
+    TWILIO_ACCOUNT_SID: str | None = Field(default_factory=lambda: os.getenv("TWILIO_ACCOUNT_SID"))
+    TWILIO_AUTH_TOKEN: str | None = Field(default_factory=lambda: os.getenv("TWILIO_AUTH_TOKEN"))
+    TWILIO_FROM_NUMBER: str | None = Field(default_factory=lambda: os.getenv("TWILIO_FROM_NUMBER"))
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:

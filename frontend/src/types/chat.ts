@@ -51,6 +51,15 @@ export interface ApiResponseWrapper<T> {
   data: T;
 }
 
+export interface VoiceSynthesisResponseData {
+  provider: string;
+  language_code: string;
+  audio_base64?: string | null;
+  audio_mime_type: string;
+  fallback_to_browser: boolean;
+  reason?: string | null;
+}
+
 export interface LocalChatSession {
   conversationId: number | null;
   updatedAt: string;

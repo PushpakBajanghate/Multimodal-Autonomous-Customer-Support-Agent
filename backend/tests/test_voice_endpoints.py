@@ -1,0 +1,51 @@
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+
+client = TestClient(app)
+
+
+def _customer_token() -> str:
+    response = client.post("/api/v1/auth/customer-session", json={})
+    assert response.status_code == 200
+    return response.json()["data"]["access_token"]
+
+
+def test_voice_synthesis_falls_back_without_provider_key(monkeypatch):
+    monkeypatch.setattr("app.services.voice_service.settings.SARVAM_API_KEY", None)
+    token = _customer_token()
+
+    response = client.post(
+        "/api/v1/voice/synthesize",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"text": "Mera order kahan hai?", "language_code": "auto", "provider": "sarvam"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"]["provider"] == "sarvam"
+    assert payload["data"]["language_code"] == "hi-IN"
+    assert payload["data"]["fallback_to_browser"] is True
+    assert payload["data"]["audio_base64"] is None
+
+
+def test_outbound_call_reports_missing_twilio_configuration(monkeypatch):
+    monkeypatch.setattr("app.api.v1.endpoints.voice.settings.TWILIO_ACCOUNT_SID", None)
+    monkeypatch.setattr("app.api.v1.endpoints.voice.settings.TWILIO_AUTH_TOKEN", None)
+    monkeypatch.setattr("app.api.v1.endpoints.voice.settings.TWILIO_FROM_NUMBER", None)
+    monkeypatch.setattr("app.api.v1.endpoints.voice.settings.PUBLIC_BASE_URL", None)
+    token = _customer_token()
+
+    response = client.post(
+        "/api/v1/voice/calls/outbound",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"to_number": "+15551234567", "opening_message": "Hello from Aura"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["status"] == "not_configured"
+    assert payload["data"]["configured"] is False
