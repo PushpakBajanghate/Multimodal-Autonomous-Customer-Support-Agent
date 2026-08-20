@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000, description="Customer message text")
@@ -8,14 +8,13 @@ class ChatRequest(BaseModel):
     channel: Optional[str] = Field(default="chat", description="Communication channel: chat or voice")
 
 class ConversationMessageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     conversation_id: int
     sender: str  # "user" or "agent"
     message_text: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 class ChatResponse(BaseModel):
     conversation_id: int
@@ -25,12 +24,11 @@ class ChatResponse(BaseModel):
     created_at: datetime
 
 class ConversationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     customer_id: Optional[int] = None
     channel: str
     status: str
     started_at: datetime
     messages: List[ConversationMessageRead] = []
-
-    class Config:
-        from_attributes = True

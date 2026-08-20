@@ -60,10 +60,12 @@ pnpm-debug.log*
 .env.*.local
 *.env
 
-# Operating System
+# Operating System & Local DB
 .DS_Store
 Thumbs.db
 db.sqlite3
+*.db
+macs.db
 
 # IDEs
 .idea/

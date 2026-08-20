@@ -1,11 +1,26 @@
+import os
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
+
+# Determine project base directory and .env paths
+_CURRENT_DIR = Path(__file__).resolve().parent
+_BACKEND_DIR = _CURRENT_DIR.parent.parent
+_ROOT_DIR = _BACKEND_DIR.parent
+
+_ENV_PATHS = [
+    _ROOT_DIR / ".env",
+    _BACKEND_DIR / ".env",
+    Path(".env"),
+    Path("../.env")
+]
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Multimodal Autonomous Customer Support Agent"
     API_V1_STR: str = "/api/v1"
     
     # Database configurations
+    DATABASE_URL: str | None = Field(default=None)
     POSTGRES_USER: str = Field(default="postgres")
     POSTGRES_PASSWORD: str = Field(default="postgres_secure_password_change_me")
     POSTGRES_DB: str = Field(default="customer_support_db")
@@ -27,15 +42,17 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = Field(default=None)
     OPENAI_MODEL: str = Field(default="gpt-4o-mini")
     GEMINI_API_KEY: str | None = Field(default=None)
-    GEMINI_MODEL: str = Field(default="gemini-1.5-flash")
+    GEMINI_MODEL: str = Field(default="gemini-3.6-flash")
     LLM_TEMPERATURE: float = Field(default=0.1)
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     model_config = SettingsConfigDict(
-        env_file="../.env",  # search root env
+        env_file=_ENV_PATHS,
         env_file_encoding="utf-8",
         extra="ignore"
     )

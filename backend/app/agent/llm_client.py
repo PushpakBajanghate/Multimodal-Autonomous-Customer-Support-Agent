@@ -298,6 +298,85 @@ def call_gemini_sync(
         return None
 
 
+def generate_natural_llm_response(
+    intent: str,
+    tool_results: Dict[str, Any],
+    user_message: str,
+    conversation_context: Optional[List[Dict[str, Any]]] = None
+) -> Optional[str]:
+    """
+    Generates a grounded, natural conversational response using the active LLM.
+    Strictly instructs the model to adhere to the provided tool execution output without hallucination.
+    """
+    provider = (settings.LLM_PROVIDER or "").lower().strip()
+    system_prompt = (
+        "You are Aura, an autonomous, highly professional and empathetic customer support agent. "
+        "Your task is to synthesize a helpful, warm, and clear customer response based STRICTLY "
+        "on the verified tool results and data provided below. Do NOT hallucinate or alter tracking numbers, "
+        "dates, amounts, or policies. Keep the response concise, formatted nicely with bullet points where appropriate."
+    )
+
+    context_str = json.dumps(tool_results, default=str)
+    prompt = (
+        f"Customer Intent: {intent}\n"
+        f"Verified Tool & Domain Results: {context_str}\n"
+        f"Customer Inquiry: \"{user_message}\"\n\n"
+        "Generate the final response to the customer:"
+    )
+
+    # 1. Try Gemini
+    if provider == "gemini" and settings.GEMINI_API_KEY:
+        try:
+            model = settings.GEMINI_MODEL or "gemini-3.6-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
+            payload = {
+                "system_instruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 500
+                }
+            }
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(url, json=payload)
+                if resp.status_code == 200:
+                    body = resp.json()
+                    candidates = body.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            return parts[0].get("text", "").strip()
+        except Exception as exc:
+            logger.warning(f"Gemini natural response generation failed: {exc}")
+
+    # 2. Try OpenAI
+    if provider == "openai" and settings.OPENAI_API_KEY:
+        try:
+            url = "https://api.openai.com/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": settings.OPENAI_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.2,
+                "max_tokens": 500
+            }
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(url, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    body = resp.json()
+                    return body["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            logger.warning(f"OpenAI natural response generation failed: {exc}")
+
+    return None
+
+
 def execute_llm_intent_pipeline(
     text: str,
     conversation_context: Optional[List[Dict[str, Any]]] = None

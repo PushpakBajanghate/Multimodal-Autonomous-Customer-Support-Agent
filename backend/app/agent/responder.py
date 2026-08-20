@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.intent import analyze_utterance
 from app.agent.schemas import IntentType, AnalysisResult
+from app.agent.llm_client import generate_natural_llm_response
 from app.services.order_service import (
     get_order_tracking,
     process_refund,
