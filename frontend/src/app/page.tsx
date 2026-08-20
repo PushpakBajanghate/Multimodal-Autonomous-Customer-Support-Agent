@@ -8,6 +8,9 @@ import { QuickPrompts } from '../components/chat/QuickPrompts';
 import { ChatInput } from '../components/chat/ChatInput';
 import { ErrorBanner } from '../components/chat/ErrorBanner';
 import { SessionDrawer } from '../components/chat/SessionDrawer';
+import { VoiceSimulationModal } from '../components/chat/VoiceSimulationModal';
+import { ReasoningDrawer } from '../components/chat/ReasoningDrawer';
+import { VerificationModal } from '../components/chat/VerificationModal';
 
 export default function CustomerSupportPage() {
   const {
@@ -28,9 +31,16 @@ export default function CustomerSupportPage() {
   } = useChatSession();
 
   const [isSessionDrawerOpen, setIsSessionDrawerOpen] = useState(false);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [isReasoningDrawerOpen, setIsReasoningDrawerOpen] = useState(false);
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
 
   const handleSelectStarter = (promptText: string) => {
     sendMessage(promptText);
+  };
+
+  const handleVoiceSend = async (spokenText: string) => {
+    return sendMessage(spokenText);
   };
 
   return (
@@ -59,7 +69,25 @@ export default function CustomerSupportPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => setIsVoiceModalOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-emerald-950/50 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-800 hover:border-emerald-700 transition-all flex items-center gap-1.5 font-medium cursor-pointer"
+          >
+            <span>🎙️</span>
+            <span>Voice Mode</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsReasoningDrawerOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-indigo-950/50 hover:bg-indigo-900/50 text-indigo-300 border border-indigo-800 hover:border-indigo-700 transition-all flex items-center gap-1.5 font-medium cursor-pointer"
+          >
+            <span>🧠</span>
+            <span>Brain Trace</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsSessionDrawerOpen(true)}
@@ -68,7 +96,7 @@ export default function CustomerSupportPage() {
             <svg className="w-3.5 h-3.5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
             </svg>
-            <span>Sessions History</span>
+            <span>Sessions</span>
           </button>
         </div>
       </header>
@@ -83,6 +111,9 @@ export default function CustomerSupportPage() {
             onNewChat={startNewConversation}
             onOpenSessionDrawer={() => setIsSessionDrawerOpen(true)}
             onRefreshHealth={checkHealth}
+            onOpenVoiceModal={() => setIsVoiceModalOpen(true)}
+            onOpenReasoningDrawer={() => setIsReasoningDrawerOpen(true)}
+            onOpenVerificationModal={() => setIsVerificationModalOpen(true)}
           />
 
           {/* Connection Error Banner */}
@@ -125,6 +156,31 @@ export default function CustomerSupportPage() {
         onSelectSession={loadSessionHistory}
         onNewChat={startNewConversation}
         onClearHistory={clearLocalHistory}
+      />
+
+      {/* Omnichannel Voice Simulation Modal */}
+      <VoiceSimulationModal
+        isOpen={isVoiceModalOpen}
+        onClose={() => setIsVoiceModalOpen(false)}
+        onSendVoiceTranscript={handleVoiceSend}
+        conversationId={conversationId}
+      />
+
+      {/* Agent Brain & Reasoning Trajectory Drawer */}
+      <ReasoningDrawer
+        isOpen={isReasoningDrawerOpen}
+        onClose={() => setIsReasoningDrawerOpen(false)}
+        conversationId={conversationId}
+        isBackendOnline={backendOnline}
+      />
+
+      {/* Step-Up Customer Verification Modal */}
+      <VerificationModal
+        isOpen={isVerificationModalOpen}
+        onClose={() => setIsVerificationModalOpen(false)}
+        onVerificationSuccess={msg => {
+          sendMessage(msg);
+        }}
       />
     </div>
   );

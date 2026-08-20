@@ -15,6 +15,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onRetry
 }) => {
   const [copied, setCopied] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const isUser = message.sender === 'user';
   const isError = message.status === 'error';
   const isSending = message.status === 'sending';
@@ -24,6 +25,25 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     navigator.clipboard.writeText(message.text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSpeak = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !message.text) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const cleanText = message.text.replace(/[•*#_`]/g, ' ');
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.05;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
   };
 
   return (
@@ -103,6 +123,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 className="text-xs text-rose-300 hover:text-rose-100 underline ml-1 cursor-pointer font-medium"
               >
                 Retry
+              </button>
+            )}
+
+            {/* Text to Speech Button for Agent Messages */}
+            {!isUser && message.text && (
+              <button
+                type="button"
+                onClick={handleSpeak}
+                className={`transition-colors cursor-pointer ml-1 p-0.5 rounded ${
+                  isSpeaking ? 'text-blue-400 font-bold' : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-200'
+                }`}
+                title={isSpeaking ? 'Stop audio' : 'Listen to response'}
+              >
+                {isSpeaking ? (
+                  <span className="text-[10px] text-blue-400 flex items-center gap-0.5">
+                    🔊 Speaking...
+                  </span>
+                ) : (
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                  </svg>
+                )}
               </button>
             )}
 
