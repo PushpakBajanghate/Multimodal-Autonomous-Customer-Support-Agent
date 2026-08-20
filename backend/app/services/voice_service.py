@@ -66,14 +66,13 @@ def _synthesize_sarvam(text: str, language_code: str) -> SynthesizedAudio:
 
     speaker = settings.SARVAM_HINDI_SPEAKER if language_code.startswith("hi") else settings.SARVAM_ENGLISH_SPEAKER
     payload = {
-        "text": text,
-        "language_code": language_code,
-        "model": settings.SARVAM_TTS_MODEL,
+        "inputs": [text],
+        "target_language_code": language_code,
         "speaker": speaker,
-        "pace": 0.92,
+        "pace": 1.0,
         "speech_sample_rate": settings.SARVAM_SAMPLE_RATE,
-        "output_audio_codec": settings.SARVAM_OUTPUT_CODEC,
-        "temperature": 0.72,
+        "enable_preprocessing": True,
+        "model": settings.SARVAM_TTS_MODEL,
     }
     headers = {
         "api-subscription-key": settings.SARVAM_API_KEY,

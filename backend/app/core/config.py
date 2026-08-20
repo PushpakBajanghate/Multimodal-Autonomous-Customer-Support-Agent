@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     SARVAM_API_KEY: str | None = Field(default_factory=lambda: os.getenv("SARVAM_API_KEY"))
     SARVAM_TTS_URL: str = Field(default="https://api.sarvam.ai/text-to-speech")
     SARVAM_TTS_MODEL: str = Field(default="bulbul:v3")
-    SARVAM_HINDI_SPEAKER: str = Field(default="anushka")
+    SARVAM_HINDI_SPEAKER: str = Field(default="ritu")
     SARVAM_ENGLISH_SPEAKER: str = Field(default="shubh")
     SARVAM_OUTPUT_CODEC: str = Field(default="wav")
     SARVAM_SAMPLE_RATE: int = Field(default=24000)
