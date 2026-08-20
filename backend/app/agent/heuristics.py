@@ -31,6 +31,25 @@ COMMON_DATE_WORDS = [
 ]
 
 
+def _extract_customer_name(text: str) -> Optional[str]:
+    """Helper to detect customer name from introductory phrases."""
+    name_patterns = [
+        r'(?:i am|my name is|this is|i\'m|myself)\s+([A-Za-z]+)',
+        r'(?:hi|hello|hey)\s+(?:i am|i\'m|this is)?\s*([A-Za-z]+)\s+(?:here|i need|i want|and|please)',
+        r'(?:naam\s+hai\s+|naam\s+mera\s+)([A-Za-z]+)'
+    ]
+    for pat in name_patterns:
+        match = re.search(pat, text, re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip().capitalize()
+            if candidate.lower() not in [
+                "here", "looking", "trying", "wondering", "just", "calling", "writing",
+                "a", "an", "the", "user", "customer", "support", "agent", "need", "want", "have", "hi", "hello"
+            ]:
+                return candidate
+    return None
+
+
 def extract_entities_rule_based(text: str) -> ExtractedEntities:
     """Extracts entities using regex and keyword rules with confidence scoring."""
     scores: Dict[str, float] = {}
@@ -57,7 +76,6 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
     if order_id is None:
         standalone_num = re.search(r'\b(\d{1,5})\b', text)
         if standalone_num:
-            # check if it's not part of an address or phone
             num_val = int(standalone_num.group(1))
             if num_val > 0 and len(standalone_num.group(1)) <= 5:
                 order_id = num_val
@@ -107,7 +125,6 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
         a_match = re.search(a_pat, text, re.IGNORECASE)
         if a_match:
             addr_candidate = a_match.group(1).strip()
-            # Clean trailing punctuation
             addr_candidate = re.sub(r'[\.\?!]+$', '', addr_candidate)
             if len(addr_candidate) >= 8:
                 new_address = addr_candidate
@@ -125,7 +142,6 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
             if d_word in lower_text:
                 relevant_dates.append(d_word)
                 scores["relevant_dates"] = 0.85
-
 
     # 8. Extract Customer Name
     customer_name = _extract_customer_name(text)
@@ -145,8 +161,6 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
     )
 
 
-
-
 def classify_intent_rule_based(
     text: str,
     conversation_context: Optional[List[Dict[str, Any]]] = None
@@ -156,36 +170,39 @@ def classify_intent_rule_based(
 
     # Empty or pure greeting checks
     greetings = ["hi", "hello", "hey", "good morning", "good evening", "namaste", "hola", "sup"]
-    if t in greetings or (len(t) < 15 and any(t.startswith(g) for g in greetings) and not any(w in t for w in ["order", "cancel", "track", "refund", "password", "ticket"])):
+    greeting_match = any(t == g or t.startswith(f"{g} ") or t.startswith(f"{g},") or t.startswith(f"{g}!") for g in greetings)
+    has_action_word = any(w in t for w in [
+        "order", "cancel", "canecl", "cancle", "cancl", "track", "trak", "shipment",
+        "delivery", "refund", "return", "password", "ticket", "complaint", "address"
+    ])
+    if greeting_match and not has_action_word and len(t) < 35:
         return IntentType.UNKNOWN, 0.90, "Standard greeting without specific support intent."
 
-    # 1. Order Cancellation (High Priority)
-    cancellation_keywords = [
-        "cancel my order", "cancel order", "cancel karna hai", "cancel kar do",
-        "cancel kardo", "order cancel", "stop order", "cancellation", "order cancelation",
-        "don't want the order", "nahi chahiye order", "cancel this", "order band karo"
-    ]
-    if any(kw in t for kw in cancellation_keywords) or (
-        "cancel" in t and any(word in t for word in ["order", "purchase", "parcel", "shipment"])
-    ):
+    # 1. Order Cancellation (High Priority - typo tolerant)
+    cancellation_regex = re.compile(
+        r'\b(?:cancel|cancle|canecl|cancl|cancell|cancelling|cancellation|stop|band)\b.*?\b(?:order|purchase|parcel|shipment|shoes|item|product|package)\b|'
+        r'\b(?:order|purchase|parcel|shipment|item|product|package)\b.*?\b(?:cancel|cancle|canecl|cancl|cancell|cancellation)\b|'
+        r'\b(?:cancel|cancle|canecl|cancl|cancell)\s*(?:karna|kardo|kar do|this|my|the)?\b',
+        re.IGNORECASE
+    )
+    if cancellation_regex.search(t) or "nahi chahiye order" in t:
         return IntentType.ORDER_CANCELLATION, 0.96, "Detected explicit order cancellation intent."
 
-    # 2. Refund & Return Request
-    refund_keywords = [
-        "refund", "money back", "paise wapas", "return", "replace item", "wapas chahiye",
-        "broken item", "damaged product", "defective", "damaged item", "faulty",
-        "kharab aaya", "tuta hua", "wapas lena", "return karna"
-    ]
-    if any(kw in t for kw in refund_keywords):
+    # 2. Refund & Return Request (typo tolerant)
+    refund_regex = re.compile(
+        r'\b(?:refund|refnd|rfund|money back|paise wapas|return|replace|wapas|broken|damaged|defective|faulty|kharab|tuta)\b',
+        re.IGNORECASE
+    )
+    if refund_regex.search(t):
         return IntentType.REFUND_REQUEST, 0.95, "Detected refund or return request intent."
 
-    # 3. Address Update
-    address_keywords = [
-        "change address", "update address", "new address", "shipping address",
-        "delivery address", "address badal", "address change", "pata badalna",
-        "wrong address", "galat address"
-    ]
-    if any(kw in t for kw in address_keywords):
+    # 3. Address Update (typo tolerant)
+    address_regex = re.compile(
+        r'\b(?:address|adres|addres|pata|shipping location|destination)\b.*?\b(?:change|update|new|badal|wrong|galat|modify)\b|'
+        r'\b(?:change|update|new|badal|wrong|galat|modify)\b.*?\b(?:address|adres|addres|pata|location)\b',
+        re.IGNORECASE
+    )
+    if address_regex.search(t):
         return IntentType.ADDRESS_UPDATE, 0.96, "Detected shipping address change intent."
 
     # 4. Password Reset
@@ -197,23 +214,25 @@ def classify_intent_rule_based(
     if any(kw in t for kw in password_keywords):
         return IntentType.PASSWORD_RESET, 0.97, "Detected password reset or account recovery intent."
 
-    # 5. Order Tracking & Delivery Inquiries
+    # 5. Order Tracking & Delivery Inquiries (typo tolerant)
     tracking_keywords = [
-        "track", "where is my order", "order status", "shipment", "delivery status",
+        "track", "trak", "where is my order", "order status", "shipment", "delivery status",
         "kahan pahuncha", "kahan hai mera", "kab aayega", "parcel status",
         "eta", "when will it arrive", "tracking info", "status of order", "track order",
         "get my order", "order soon", "get order", "receive my order", "delivery soon",
         "parcel kab", "order update", "check my order", "status of my order",
         "when is my order", "package status", "when will my order", "can i get my order"
     ]
-    if any(kw in t for kw in tracking_keywords) or (("order" in t or "parcel" in t or "package" in t) and any(w in t for w in ["where", "status", "kahan", "kab", "when", "soon", "arrive", "get", "delivery", "track", "reach", "receive"])):
+    if any(kw in t for kw in tracking_keywords) or (
+        any(p in t for p in ["order", "parcel", "package", "item"]) and any(w in t for w in ["where", "status", "kahan", "kab", "when", "soon", "arrive", "get", "delivery", "track", "trak", "reach", "receive", "dispatched"])
+    ):
         return IntentType.ORDER_TRACKING, 0.95, "Detected order tracking / status lookup intent."
 
     # 6. Ticket Creation / Human Escalation
     ticket_keywords = [
         "create ticket", "open ticket", "support ticket", "human agent", "talk to human",
         "customer care executive", "representative", "complaint", "shikayat",
-        "escalate", "file a complaint", "agent se baat", "talk to agent"
+        "escalate", "file a complaint", "agent se baat", "talk to agent", "call me"
     ]
     if any(kw in t for kw in ticket_keywords):
         return IntentType.TICKET_CREATION, 0.95, "Detected ticket creation or human agent escalation intent."
@@ -222,28 +241,12 @@ def classify_intent_rule_based(
     if conversation_context and len(conversation_context) > 0:
         last_msg = conversation_context[-1].get("text", "").lower()
         if "order id" in last_msg or "which order" in last_msg:
-            # Customer might be answering with just an order number
             num_match = re.search(r'\b\d+\b', t)
             if num_match:
                 return IntentType.ORDER_TRACKING, 0.85, "Contextual order ID response to tracking inquiry."
 
     # Default to UNKNOWN
     return IntentType.UNKNOWN, 0.70, "No recognized support intent keyword matched."
-
-
-def _extract_customer_name(text: str) -> Optional[str]:
-    """Helper to detect customer name from introductory phrases."""
-    name_patterns = [
-        r'(?:i am|my name is|this is|i\'m)\s+([A-Za-z]+)',
-        r'(?:naam\s+hai\s+|naam\s+mera\s+)([A-Za-z]+)'
-    ]
-    for pat in name_patterns:
-        match = re.search(pat, text, re.IGNORECASE)
-        if match:
-            candidate = match.group(1).strip().capitalize()
-            if candidate.lower() not in ["here", "looking", "trying", "wondering", "just", "calling", "writing", "a", "an", "the"]:
-                return candidate
-    return None
 
 
 def analyze_utterance_rule_based(
@@ -254,6 +257,13 @@ def analyze_utterance_rule_based(
     intent, confidence, reasoning = classify_intent_rule_based(text, conversation_context)
     entities = extract_entities_rule_based(text)
     user_name = _extract_customer_name(text)
+    if not user_name and conversation_context:
+        for msg in reversed(conversation_context):
+            ctx_name = _extract_customer_name(msg.get("text", ""))
+            if ctx_name:
+                user_name = ctx_name
+                entities.customer_name = ctx_name
+                break
     greeting_prefix = f"Hello {user_name}! " if user_name else "Hello! "
 
     # Check conversation context if order_id was previously identified

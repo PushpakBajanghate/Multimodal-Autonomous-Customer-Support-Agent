@@ -48,6 +48,15 @@ def generate_agent_response(
 
     # 2. Identify customer profile and active orders from DB
     customer_name = entities.customer_name
+    if not customer_name and conversation_history:
+        from app.agent.heuristics import _extract_customer_name
+        for hist_msg in conversation_history:
+            if hist_msg.get("sender") == "user":
+                detected_name = _extract_customer_name(hist_msg.get("text", ""))
+                if detected_name:
+                    customer_name = detected_name
+                    break
+
     customer_orders_data: List[Dict[str, Any]] = []
 
     try:

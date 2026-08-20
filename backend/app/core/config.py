@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = Field(default="127.0.0.1")
     POSTGRES_PORT: int = Field(default=5432)
 
-
     # Redis configurations
     REDIS_HOST: str = Field(default="127.0.0.1")
     REDIS_PORT: int = Field(default=6379)
@@ -43,7 +42,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
     OPENAI_MODEL: str = Field(default="gpt-4o-mini")
     GEMINI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-    GEMINI_MODEL: str = Field(default="gemini-3.7-flash")
+    GEMINI_MODEL: str = Field(default="gemini-2.5-flash")
     LLM_TEMPERATURE: float = Field(default=0.2)
 
     # Human voice and outbound calling
