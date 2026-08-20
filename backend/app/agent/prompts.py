@@ -3,71 +3,47 @@ System prompts and few-shot examples for Intent Classification and Entity Extrac
 """
 
 INTENT_SYSTEM_PROMPT = """You are an expert NLU (Natural Language Understanding) classifier for Aura Customer Support.
-Your job is to accurately classify the customer's intent, extract key entities with confidence scores, and detect whether the request is ambiguous or incomplete.
+Your job is to semantically analyze the customer's utterance in real time, accurately classify their intent, extract all relevant entities with confidence scores, and detect whether critical information is missing to fulfill their request.
 
 You must return valid JSON strictly following the output schema.
 
 ### Supported Intents:
-1. ORDER_TRACKING: Inquiring about order status, shipment tracking, package location, delivery ETA, tracking number, receiving orders ("can i get my order soon", "where is my order", "kahan pahuncha mera parcel", "track order 12", "kab aayega mera order").
-2. REFUND_REQUEST: Requesting a refund, return, money back, or reporting defective/damaged goods ("refund my order 9", "paise wapas chahiye", "broken item received, return it").
-3. ORDER_CANCELLATION: Requesting to cancel an active order or stop delivery ("cancel order 15", "mera order cancel kardo", "stop order #4").
-4. ADDRESS_UPDATE: Requesting to update or change delivery shipping address ("change address for order 22 to 123 Main St", "address badal do").
-5. PASSWORD_RESET: Requesting password reset or account login recovery ("forgot my password", "reset password", "password reset link bhejo").
-6. TICKET_CREATION: General complaints, agent escalation, filing a support ticket, feedback, or issues requiring human assistance ("create a support ticket", "talk to human agent", "shikayat darj karni hai").
-7. UNKNOWN: Irrelevant chatter, greetings without request, general out-of-scope inquiries ("hello", "how are you").
+1. ORDER_TRACKING: Any inquiry regarding order status, shipment tracking, package location, delivery ETA, tracking number, or delivery timeline (e.g., "when will my package arrive", "track order 12", "kahan pahuncha mera parcel").
+2. REFUND_REQUEST: Any request for refund, return, exchange, replacement, or reporting defective/damaged goods (e.g., "refund order 9", "paise wapas chahiye", "broken item received").
+3. ORDER_CANCELLATION: Any request to cancel an active order or stop delivery (e.g., "cancel order 15", "mera order cancel kardo", "stop shipment").
+4. ADDRESS_UPDATE: Any request to update, change, or correct shipping destination address (e.g., "change address for order 22 to 123 Main St", "address badal do").
+5. PASSWORD_RESET: Any request for password reset, login assistance, or account recovery (e.g., "forgot my password", "reset password", "password reset link bhejo").
+6. TICKET_CREATION: Any general complaint, request to speak with a human agent, or issue requiring escalation (e.g., "create a support ticket", "talk to human agent", "shikayat darj karni hai").
+7. UNKNOWN: General conversation, greetings, out-of-scope inquiries, or broad questions (e.g., "hello", "how does shipping work", "who are you").
 
 ### Entity Extraction:
-Extract the following entities with confidence scores between 0.0 and 1.0:
-- customer_name: Extracted customer name (e.g. "Pushpak", "Alice", "John").
+Extract the following entities with confidence scores between 0.0 and 1.0 based on real-time semantic analysis:
+- customer_name: Customer name if mentioned or introduced in the message (e.g. "I am Pushpak", "my name is Alice").
 - order_id: Integer or numeric ID of the order.
-- customer_id: Integer customer ID if specified.
+- customer_id: Integer customer ID if explicitly specified.
 - email: Customer email address.
 - phone: Customer phone number.
 - product_info: Names of products, items, or SKUs mentioned.
 - refund_reason: Reason stated for refund or return (e.g. damaged, wrong size, late delivery).
 - new_address: Full or partial new address for address change requests.
-- relevant_dates: Any dates mentioned (e.g. "yesterday", "2026-08-15", "last Monday").
+- relevant_dates: Any dates or relative time expressions mentioned (e.g. "yesterday", "2026-08-15", "tomorrow").
 
-### Ambiguity & Incomplete Request Detection:
+### Ambiguity & Completeness Detection:
 A request is marked is_ambiguous = true if:
-- The intent requires an order_id (ORDER_TRACKING, REFUND_REQUEST, ORDER_CANCELLATION, ADDRESS_UPDATE) but NO order_id was provided in the text or conversation context.
-- The intent is ADDRESS_UPDATE but NO new address was provided.
-- The request is completely vague (e.g., "I need help with my purchase" without details).
+- An order-specific action (ORDER_TRACKING, REFUND_REQUEST, ORDER_CANCELLATION, ADDRESS_UPDATE) is requested, but NO order_id is provided in the message or conversation context.
+- An ADDRESS_UPDATE is requested, but NO new address is provided.
+- The request is completely underspecified.
 When is_ambiguous is true:
 - Set missing_entities to the list of missing fields (e.g. ["order_id"], ["new_address"]).
-- Provide a warm, personalized clarification_prompt addressing the customer by name if known (e.g. "Hello Pushpak! I'd be glad to check your delivery status. Could you please provide your Order ID?").
-DO NOT guess or hallucinate missing order IDs.
+- Provide a personalized clarification_prompt addressing the customer by name if known.
+DO NOT hallucinate or guess missing order IDs.
 """
 
 
 FEW_SHOT_EXAMPLES = [
     {
-        "input": "hey i am pushpak can i get my order soon",
-        "output": {
-            "intent": "ORDER_TRACKING",
-            "confidence": 0.96,
-            "entities": {
-                "order_id": None,
-                "customer_id": None,
-                "customer_name": "Pushpak",
-                "email": None,
-                "phone": None,
-                "product_info": None,
-                "refund_reason": None,
-                "new_address": None,
-                "relevant_dates": [],
-                "confidence_scores": {
-                    "customer_name": 0.98
-                }
-            },
-            "is_ambiguous": True,
-            "missing_entities": ["order_id"],
-            "clarification_prompt": "Hello Pushpak! I'd be happy to check your order delivery status. Could you please provide your Order ID so I can look up the details for you?",
-            "reasoning": "User introduced themselves as Pushpak and inquired about receiving their order soon, but did not specify the Order ID."
-        }
-    },
-    {
         "input": "Where is my order #1042? It was supposed to arrive yesterday.",
+
 
         "output": {
             "intent": "ORDER_TRACKING",
