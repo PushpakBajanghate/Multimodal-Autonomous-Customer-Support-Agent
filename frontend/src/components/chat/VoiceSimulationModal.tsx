@@ -1,6 +1,6 @@
-﻿'use client';
+'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface VoiceSimulationModalProps {
   isOpen: boolean;
@@ -21,74 +21,85 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
   const [transcript, setTranscript] = useState('');
   const [agentSpokenResponse, setAgentSpokenResponse] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [speechSupported, setSpeechSupported] = useState(true);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
+  const speakText = useCallback((text: string) => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const clean = text.replace(/[•*#_`]/g, ' ');
+      const utterance = new SpeechSynthesisUtterance(clean);
+      utterance.rate = 1.05;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  }, []);
+
+  const handleVoiceSubmit = useCallback(async (spokenText: string) => {
+    if (!spokenText.trim()) return;
+    setIsProcessing(true);
+    setTranscript(spokenText);
+
+    try {
+      const response = await onSendVoiceTranscript(spokenText);
+      if (response && typeof response === 'string') {
+        setAgentSpokenResponse(response);
+        speakText(response);
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [onSendVoiceTranscript, speakText]);
+
   // Timer for call duration
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isCalling) {
-      interval = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
-    } else {
-      setCallDuration(0);
-    }
+    if (!isCalling) return;
+    const interval = setInterval(() => {
+      setCallDuration(prev => prev + 1);
+    }, 1000);
     return () => clearInterval(interval);
   }, [isCalling]);
 
   // Speech Recognition Setup
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
+      recognition.onresult = (event: any) => {
+        const text = event.results[0][0].transcript;
+        setTranscript(text);
+        handleVoiceSubmit(text);
+      };
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        recognition.onresult = (event: any) => {
-          const text = event.results[0][0].transcript;
-          setTranscript(text);
-          handleVoiceSubmit(text);
-        };
+      recognition.onerror = () => {
+        setIsProcessing(false);
+      };
 
-        recognition.onerror = () => {
-          setIsProcessing(false);
-        };
-
-        recognition.onend = () => {
-          if (isCalling && !isMuted) {
-            try {
-              recognition.start();
-            } catch {
-              // Ignore if already active
-            }
+      recognition.onend = () => {
+        if (isCalling && !isMuted) {
+          try {
+            recognition.start();
+          } catch {
+            // Ignore if already active
           }
-        };
+        }
+      };
 
-        recognitionRef.current = recognition;
-      } else {
-        setSpeechSupported(false);
-      }
+      recognitionRef.current = recognition;
     }
-  }, [isCalling, isMuted]);
-
-  const speakText = (text: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.05;
-      utterance.pitch = 1.0;
-      window.speechSynthesis.speak(utterance);
-    }
-  };
+  }, [isCalling, isMuted, handleVoiceSubmit]);
 
   const startCall = () => {
+    setCallDuration(0);
     setIsCalling(true);
     setTranscript('');
     setAgentSpokenResponse('Connected to Aura Voice Gateway. Speak your inquiry into the microphone...');
@@ -116,22 +127,6 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
       }
     }
     onClose();
-  };
-
-  const handleVoiceSubmit = async (spokenText: string) => {
-    if (!spokenText.trim()) return;
-    setIsProcessing(true);
-    setTranscript(spokenText);
-
-    try {
-      const response = await onSendVoiceTranscript(spokenText);
-      if (response && typeof response === 'string') {
-        setAgentSpokenResponse(response);
-        speakText(response);
-      }
-    } finally {
-      setIsProcessing(false);
-    }
   };
 
   const formatDuration = (seconds: number) => {
@@ -203,7 +198,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
             </div>
           ) : (
             <p className="text-xs text-slate-500 italic text-center pt-3">
-              {isCalling ? 'Listening to speech input...' : 'Click "Start Voice Call" to begin speaking with Aura.'}
+              {isCalling ? 'Listening to speech input...' : 'Click &quot;Start Voice Call&quot; to begin speaking with Aura.'}
             </p>
           )}
 
@@ -215,7 +210,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
           )}
         </div>
 
-        {/* Preset Voice Prompt Shortcuts (For test environments without active mic) */}
+        {/* Preset Voice Prompt Shortcuts */}
         {isCalling && (
           <div className="w-full my-2">
             <p className="text-[11px] text-slate-400 mb-1 text-left">Quick Voice Test Queries:</p>
@@ -232,7 +227,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
                   disabled={isProcessing}
                   className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 transition-colors cursor-pointer"
                 >
-                  "{query}"
+                  &quot;{query}&quot;
                 </button>
               ))}
             </div>
@@ -280,12 +275,6 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
             </>
           )}
         </div>
-
-        {!speechSupported && (
-          <p className="text-[10px] text-amber-400 mt-3">
-            Note: Speech recognition is using Web Speech API fallback. Use quick buttons if browser audio access is restricted.
-          </p>
-        )}
       </div>
     </div>
   );
