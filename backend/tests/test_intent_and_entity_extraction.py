@@ -208,6 +208,15 @@ def test_hinglish_cancellation_ambiguity():
     assert res.clarification_prompt is not None
 
 
+def test_product_cancellation_request_is_not_a_generic_query():
+    res = analyze_utterance("I want to cancel my Nike shoes order")
+    assert res.intent == IntentType.ORDER_CANCELLATION
+    assert res.entities.product_info == "shoes"
+    assert res.entities.new_address is None
+    assert res.is_ambiguous is True
+    assert "order_id" in res.missing_entities
+
+
 def test_contextual_conversation_entity_resolution():
     """Tests extracting order_id across multi-turn conversation context."""
     context = [

@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
     OPENAI_MODEL: str = Field(default="gpt-4o-mini")
     GEMINI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-    GEMINI_MODEL: str = Field(default="gemini-flash-lite-latest")
+    GEMINI_MODEL: str = Field(default="gemini-3.7-flash")
     LLM_TEMPERATURE: float = Field(default=0.2)
 
     # Human voice and outbound calling

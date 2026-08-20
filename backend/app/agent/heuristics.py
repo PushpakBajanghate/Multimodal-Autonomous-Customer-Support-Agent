@@ -100,7 +100,7 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
 
     # 6. Extract New Address
     address_patterns = [
-        r'(?:to|address to|shipping to|new address is|address badal kar)\s+([0-9A-Za-z\s,.-]{8,})',
+        r'(?:address to|shipping to|deliver(?:y)? to|new address is|address badal kar)\s+([0-9A-Za-z\s,.-]{8,})',
         r'(?:address[:\s]+)([0-9A-Za-z\s,.-]{8,})'
     ]
     for a_pat in address_patterns:
@@ -165,7 +165,9 @@ def classify_intent_rule_based(
         "cancel kardo", "order cancel", "stop order", "cancellation", "order cancelation",
         "don't want the order", "nahi chahiye order", "cancel this", "order band karo"
     ]
-    if any(kw in t for kw in cancellation_keywords):
+    if any(kw in t for kw in cancellation_keywords) or (
+        "cancel" in t and any(word in t for word in ["order", "purchase", "parcel", "shipment"])
+    ):
         return IntentType.ORDER_CANCELLATION, 0.96, "Detected explicit order cancellation intent."
 
     # 2. Refund & Return Request

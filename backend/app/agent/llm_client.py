@@ -19,6 +19,7 @@ logger = logging.getLogger("aura.agent.llm")
 
 # Reliable active Gemini models in order of priority
 GEMINI_CANDIDATE_MODELS = [
+    "gemini-3.7-flash",
     "gemini-flash-lite-latest",
     "gemini-flash-latest",
     "gemini-pro-latest",
@@ -26,6 +27,15 @@ GEMINI_CANDIDATE_MODELS = [
     "gemini-1.5-flash"
 ]
 
+
+def _configured_api_key(value: Optional[str]) -> Optional[str]:
+    """Return a real key, treating sample values in .env files as unset."""
+    if not value:
+        return None
+    cleaned = value.strip()
+    if not cleaned or cleaned.upper().startswith(("PASTE_", "YOUR_", "CHANGE_")):
+        return None
+    return cleaned
 
 
 def _clean_json_markdown(text: str) -> str:
@@ -90,7 +100,7 @@ def call_openai_sync(
     conversation_context: Optional[List[Dict[str, Any]]] = None
 ) -> Optional[AnalysisResult]:
     """Synchronous OpenAI API call for intent analysis."""
-    api_key = settings.OPENAI_API_KEY
+    api_key = _configured_api_key(settings.OPENAI_API_KEY)
     if not api_key:
         return None
 
@@ -138,7 +148,7 @@ def call_gemini_sync(
     conversation_context: Optional[List[Dict[str, Any]]] = None
 ) -> Optional[AnalysisResult]:
     """Synchronous Gemini REST API call with multi-model resilience."""
-    api_key = settings.GEMINI_API_KEY
+    api_key = _configured_api_key(settings.GEMINI_API_KEY)
     if not api_key:
         return None
 
@@ -204,13 +214,16 @@ def execute_llm_intent_pipeline(
     provider = (settings.LLM_PROVIDER or "").lower().strip()
     result: Optional[AnalysisResult] = None
 
-    if provider == "gemini" and settings.GEMINI_API_KEY:
+    gemini_key = _configured_api_key(settings.GEMINI_API_KEY)
+    openai_key = _configured_api_key(settings.OPENAI_API_KEY)
+
+    if provider == "gemini" and gemini_key:
         result = call_gemini_sync(text, conversation_context)
-    elif provider == "openai" and settings.OPENAI_API_KEY:
+    elif provider == "openai" and openai_key:
         result = call_openai_sync(text, conversation_context)
-    elif settings.GEMINI_API_KEY:
+    elif gemini_key:
         result = call_gemini_sync(text, conversation_context)
-    elif settings.OPENAI_API_KEY:
+    elif openai_key:
         result = call_openai_sync(text, conversation_context)
 
     # If LLM execution succeeded, return result
@@ -236,12 +249,14 @@ def generate_conversational_llm_response(
     Adheres strictly to verified domain facts and policies.
     """
     provider = (settings.LLM_PROVIDER or "").lower().strip()
-    api_key = settings.GEMINI_API_KEY if provider == "gemini" else settings.OPENAI_API_KEY
+    gemini_key = _configured_api_key(settings.GEMINI_API_KEY)
+    openai_key = _configured_api_key(settings.OPENAI_API_KEY)
+    api_key = gemini_key if provider == "gemini" else openai_key
     if not api_key:
-        api_key = settings.GEMINI_API_KEY or settings.OPENAI_API_KEY
-        if settings.GEMINI_API_KEY:
+        api_key = gemini_key or openai_key
+        if gemini_key:
             provider = "gemini"
-        elif settings.OPENAI_API_KEY:
+        elif openai_key:
             provider = "openai"
 
     if not api_key:
@@ -254,7 +269,8 @@ def generate_conversational_llm_response(
         "1. Address the customer by name if known (e.g. 'Hello Pushpak!').\n"
         "2. If domain/tool results or active orders are provided, use those exact verified facts (order status, carrier, tracking number, ETA, amounts). Do NOT hallucinate order IDs or change delivery dates.\n"
         "3. If information is missing (e.g. order ID needed for tracking), ask for it politely and clearly explain how you will help once provided.\n"
-        "4. Keep responses structured, helpful, and natural. Avoid repeating canned capability bullet lists unless the user explicitly asks what you can do."
+        "4. Keep responses structured, helpful, and natural. Avoid repeating canned capability bullet lists unless the user explicitly asks what you can do.\n"
+        "5. For requests outside the available support data, say what you can and cannot confirm, answer the specific question where possible, and ask one focused follow-up question."
     )
 
     context_payload = {
@@ -263,7 +279,8 @@ def generate_conversational_llm_response(
         "verified_tool_results": tool_results or {},
         "customer_active_orders": customer_orders or [],
         "missing_information": missing_entities or [],
-        "suggested_clarification": clarification_prompt
+        "suggested_clarification": clarification_prompt,
+        "recent_conversation": (conversation_context or [])[-8:]
     }
 
     user_prompt = (
@@ -273,14 +290,14 @@ def generate_conversational_llm_response(
     )
 
     # 1. Try Gemini
-    if provider == "gemini" and settings.GEMINI_API_KEY:
+    if provider == "gemini" and gemini_key:
         models_to_try = [settings.GEMINI_MODEL] if settings.GEMINI_MODEL in GEMINI_CANDIDATE_MODELS else []
         for m in GEMINI_CANDIDATE_MODELS:
             if m not in models_to_try:
                 models_to_try.append(m)
 
         for model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
             payload = {
                 "system_instruction": {"parts": [{"text": system_prompt}]},
                 "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
@@ -304,11 +321,11 @@ def generate_conversational_llm_response(
                 continue
 
     # 2. Try OpenAI
-    if provider == "openai" and settings.OPENAI_API_KEY:
+    if provider == "openai" and openai_key:
         try:
             url = "https://api.openai.com/v1/chat/completions"
             headers = {
-                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                "Authorization": f"Bearer {openai_key}",
                 "Content-Type": "application/json"
             }
             payload = {
@@ -362,6 +379,11 @@ def generate_intelligent_offline_response(
     """
     greeting = f"Hello {customer_name}! " if customer_name else "Hello! "
     msg_lower = user_message.lower().strip()
+
+    # Ask the focused clarification produced by the intent engine rather than
+    # falling through to a generic welcome response.
+    if clarification_prompt:
+        return clarification_prompt
 
     # 1. Order Tracking
     if intent == IntentType.ORDER_TRACKING:
@@ -483,7 +505,7 @@ def generate_intelligent_offline_response(
 
     # 7. General / Introductions / Inquiries
     else:
-        if customer_name:
+        if customer_name and any(word in msg_lower for word in ["hello", "hi", "hey", "namaste"]):
             return (
                 f"Hello {customer_name}! It's a pleasure to assist you. "
                 f"I am Aura, your autonomous customer support assistant. How can I help you today with your orders, tracking, or account?"
