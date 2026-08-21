@@ -316,6 +316,20 @@ def generate_agent_response(
                     f"Hello {customer_name}! " if customer_name else "Hello! "
                 ) + "I would be happy to give you a call! Please provide your phone number with your country code (e.g. +91...)."
 
+    if analysis.clarification_prompt and analysis.missing_entities and not tool_results:
+        return analysis.clarification_prompt
+
+    if intent == IntentType.OUTBOUND_CALL_REQUEST and tool_results and tool_results.get("phone_number"):
+        return generate_intelligent_offline_response(
+            intent=intent,
+            user_message=message,
+            tool_results=tool_results,
+            customer_name=customer_name,
+            customer_orders=customer_orders_data,
+            missing_entities=analysis.missing_entities,
+            clarification_prompt=analysis.clarification_prompt
+        )
+
     # 4. Generate Conversational LLM Response
     llm_reply = generate_conversational_llm_response(
         intent=intent.value,

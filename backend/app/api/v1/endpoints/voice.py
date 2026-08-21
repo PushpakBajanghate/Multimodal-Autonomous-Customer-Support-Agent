@@ -134,8 +134,12 @@ def twilio_gather(
 ):
     from app.agent.responder import generate_agent_response
 
-    transcript = SpeechResult.strip() or "I need help with my order."
-    resolved_language = detect_voice_language(transcript, language_code)
+    transcript = SpeechResult.strip()
+    if transcript:
+        resolved_language = detect_voice_language(transcript, "auto")
+    else:
+        resolved_language = detect_voice_language("", language_code)
+        transcript = "I could not hear you clearly. Please ask your question again."
     reply = generate_agent_response(
         db=db,
         message=transcript,
@@ -149,14 +153,10 @@ def twilio_gather(
         language_code=resolved_language,
     )
 
-    audio_url = None
-    audio = synthesize_voice(reply, resolved_language)
-    if audio.audio_base64 and settings.PUBLIC_BASE_URL:
-        audio_id = str(abs(hash(audio.audio_base64)))
-        _AUDIO_CACHE[audio_id] = (base64.b64decode(audio.audio_base64), audio.audio_mime_type)
-        audio_url = f"{settings.PUBLIC_BASE_URL.rstrip('/')}{settings.API_V1_STR}/voice/audio/{audio_id}"
-
-    return Response(content=build_twiml(reply, action_url, resolved_language, audio_url), media_type="application/xml")
+    # Keep live call turns fast. Provider TTS can take long enough for Twilio
+    # webhooks to time out, so phone calls use Twilio <Say> while the web voice
+    # endpoint still uses Sarvam/ElevenLabs for generated audio.
+    return Response(content=build_twiml(reply, action_url, resolved_language), media_type="application/xml")
 
 
 @router.get("/audio/{audio_id}", response_class=Response)

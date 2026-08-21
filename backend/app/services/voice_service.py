@@ -136,9 +136,10 @@ def build_twiml(message: str, action_url: str, language_code: str = "en-IN", aud
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<Response>'
-        f'<Gather input="speech" speechTimeout="auto" language="{speech_language}" action="{escaped_action}" method="POST">'
+        f'<Gather input="speech" timeout="8" speechTimeout="auto" actionOnEmptyResult="true" language="{speech_language}" action="{escaped_action}" method="POST">'
         f"{prompt}"
         '</Gather>'
         f'<Say language="{speech_language}" voice="Polly.Aditi">{retry_message}</Say>'
+        f'<Redirect method="POST">{escaped_action}</Redirect>'
         '</Response>'
     )

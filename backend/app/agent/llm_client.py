@@ -242,6 +242,10 @@ def execute_llm_intent_pipeline(
     Executes the configured LLM pipeline (Gemini or OpenAI).
     Falls back reliably to deterministic heuristic engine if no API key is present or on failure.
     """
+    heuristic_result = analyze_utterance_rule_based(text, conversation_context)
+    if heuristic_result.confidence >= 0.90 or heuristic_result.clarification_prompt:
+        return heuristic_result
+
     provider = (settings.LLM_PROVIDER or "").lower().strip()
     result: Optional[AnalysisResult] = None
 
@@ -262,7 +266,7 @@ def execute_llm_intent_pipeline(
         return result
 
     # Otherwise fallback to high-accuracy rule-based heuristics
-    return analyze_utterance_rule_based(text, conversation_context)
+    return heuristic_result
 
 
 def generate_conversational_llm_response(
