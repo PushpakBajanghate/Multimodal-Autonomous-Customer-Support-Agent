@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     ELEVENLABS_API_KEY: str | None = Field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY"))
     ELEVENLABS_TTS_URL: str = Field(default="https://api.elevenlabs.io/v1/text-to-speech")
-    ELEVENLABS_VOICE_ID: str = Field(default="21m00Tcm4TlvDq8ikWAM")
+    ELEVENLABS_VOICE_ID: str = Field(default="EXAVITQu4vr4xnSDxMaL")
     ELEVENLABS_MODEL_ID: str = Field(default="eleven_multilingual_v2")
 
     TWILIO_ACCOUNT_SID: str | None = Field(default_factory=lambda: os.getenv("TWILIO_ACCOUNT_SID"))
