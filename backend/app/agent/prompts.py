@@ -13,8 +13,9 @@ You must return valid JSON strictly following the output schema.
 3. ORDER_CANCELLATION: Any request to cancel an active order or stop delivery (e.g., "cancel order 15", "mera order cancel kardo", "stop shipment").
 4. ADDRESS_UPDATE: Any request to update, change, or correct shipping destination address (e.g., "change address for order 22 to 123 Main St", "address badal do").
 5. PASSWORD_RESET: Any request for password reset, login assistance, or account recovery (e.g., "forgot my password", "reset password", "password reset link bhejo").
-6. TICKET_CREATION: Any general complaint, request to speak with a human agent, or issue requiring escalation (e.g., "create a support ticket", "talk to human agent", "shikayat darj karni hai").
-7. UNKNOWN: General conversation, greetings, out-of-scope inquiries, or broad questions (e.g., "hello", "how does shipping work", "who are you").
+6. TICKET_CREATION: Any general complaint, request to speak with a human agent, or issue requiring escalation (e.g., "create a support ticket", "shikayat darj karni hai").
+7. OUTBOUND_CALL_REQUEST: Any request for an AI voice agent phone call, call back, or speaking on the phone (e.g., "call me", "call me on +919876543210", "mujhe call karo", "want a phone call").
+8. UNKNOWN: General conversation, greetings, out-of-scope inquiries, or broad questions (e.g., "hello", "how does shipping work", "who are you").
 
 ### Entity Extraction:
 Extract the following entities with confidence scores between 0.0 and 1.0 based on real-time semantic analysis:

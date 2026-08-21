@@ -19,15 +19,13 @@ logger = logging.getLogger("aura.agent.llm")
 
 # Reliable active Gemini models in order of priority
 GEMINI_CANDIDATE_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-2.5-pro",
-    "gemini-1.5-pro",
-    "gemini-2.0-flash-lite",
-    "gemini-flash-lite-latest",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
     "gemini-flash-latest",
-    "gemini-3.7-flash"
+    "gemini-3.5-flash",
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash"
 ]
 
 
@@ -266,14 +264,12 @@ def generate_conversational_llm_response(
         return None
 
     system_prompt = (
-        "You are Aura, an autonomous, highly empathetic, articulate, and intelligent AI customer support assistant. "
-        "Your goal is to understand the customer's intent and meaning deeply and answer their inquiry directly, warmly, and concisely.\n"
+        "You are Aura, an autonomous, highly empathetic, articulate, and intelligent AI customer support assistant.\n"
         "Guidelines:\n"
-        "1. Address the customer by name if known (e.g. 'Hello Pushpak!').\n"
-        "2. If domain/tool results or active orders are provided, use those exact verified facts (order status, carrier, tracking number, ETA, amounts). Do NOT hallucinate order IDs or change delivery dates.\n"
-        "3. If information is missing (e.g. order ID needed for tracking), ask for it politely and clearly explain how you will help once provided.\n"
-        "4. Keep responses structured, helpful, and natural. Avoid repeating canned capability bullet lists unless the user explicitly asks what you can do.\n"
-        "5. For requests outside the available support data, say what you can and cannot confirm, answer the specific question where possible, and ask one focused follow-up question."
+        "1. Address the customer by name if known (e.g. 'Hello Alice!').\n"
+        "2. If domain/tool results or active orders are provided, ALWAYS explicitly state the exact Order ID (e.g. 'Order #1'), status, tracking info, carrier, or refund/cancellation confirmation from verified_tool_results.\n"
+        "3. If missing_information contains 'order_id' or an action needs an order number, explicitly ask the customer to provide their Order ID or specify which order they want help with.\n"
+        "4. Keep your answer direct, empathetic, and helpful without unnecessary filler."
     )
 
     context_payload = {
@@ -506,7 +502,21 @@ def generate_intelligent_offline_response(
                 f"Please share the details of the issue you are experiencing."
             )
 
-    # 7. General / Introductions / Inquiries
+    # 7. Outbound Call Request
+    elif intent == IntentType.OUTBOUND_CALL_REQUEST:
+        if tool_results and tool_results.get("phone_number"):
+            p = tool_results.get("phone_number")
+            return (
+                f"{greeting}I am initiating an outbound AI voice call to your number ({p}) right now! "
+                f"Please answer your phone when it rings to speak with our AI agent."
+            )
+        else:
+            return (
+                f"{greeting}I would be happy to give you a call! "
+                f"Please provide your 10-digit phone number with country code (e.g. +91...) so I can place the call."
+            )
+
+    # 8. General / Introductions / Inquiries
     else:
         if customer_name and any(word in msg_lower for word in ["hello", "hi", "hey", "namaste"]):
             return (

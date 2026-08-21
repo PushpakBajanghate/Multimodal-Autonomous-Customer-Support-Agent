@@ -228,11 +228,26 @@ def classify_intent_rule_based(
     ):
         return IntentType.ORDER_TRACKING, 0.95, "Detected order tracking / status lookup intent."
 
-    # 6. Ticket Creation / Human Escalation
+    # 6. Outbound Phone Call Request
+    call_keywords = [
+        "call me", "phone call", "call aao", "mujhe call karo", "call back", "make a call",
+        "agent call", "want a call", "want to call", "i want to call", "can you call me",
+        "call kar do", "call par baat", "phone par baat", "voice call", "call kr", "give me a call",
+        "call on my number", "call my number", "call real quick"
+    ]
+    call_regex = re.compile(
+        r'\b(?:call|phone|voice)\b.*?\b(?:me|my|us|now|back|number|agent|person|mobile)\b|'
+        r'\b(?:want|need|give)\b.*?\b(?:call|phone)\b',
+        re.IGNORECASE
+    )
+    if any(kw in t for kw in call_keywords) or call_regex.search(t):
+        return IntentType.OUTBOUND_CALL_REQUEST, 0.96, "Detected outbound phone call request intent."
+
+    # 7. Ticket Creation / Human Escalation
     ticket_keywords = [
         "create ticket", "open ticket", "support ticket", "human agent", "talk to human",
         "customer care executive", "representative", "complaint", "shikayat",
-        "escalate", "file a complaint", "agent se baat", "talk to agent", "call me"
+        "escalate", "file a complaint", "agent se baat", "talk to agent"
     ]
     if any(kw in t for kw in ticket_keywords):
         return IntentType.TICKET_CREATION, 0.95, "Detected ticket creation or human agent escalation intent."
