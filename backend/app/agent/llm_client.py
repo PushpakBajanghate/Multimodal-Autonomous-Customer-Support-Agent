@@ -26,6 +26,9 @@ GEMINI_CANDIDATE_MODELS = [
     "gemini-1.5-flash"
 ]
 
+_GEMINI_KEY_VALID: Optional[bool] = None
+_OPENAI_KEY_VALID: Optional[bool] = None
+
 
 
 def _clean_json_markdown(text: str) -> str:
@@ -53,6 +56,11 @@ def _parse_llm_json_response(raw_text: str) -> Optional[AnalysisResult]:
         confidence = float(data.get("confidence", 0.95))
         
         raw_entities = data.get("entities", {})
+        conf_scores = dict(raw_entities.get("confidence_scores") or {})
+        for entity_key in ["order_id", "email", "phone", "product_info", "refund_reason", "new_address"]:
+            if raw_entities.get(entity_key) is not None and entity_key not in conf_scores:
+                conf_scores[entity_key] = max(confidence, 0.85)
+
         entities = ExtractedEntities(
             order_id=raw_entities.get("order_id"),
             customer_id=raw_entities.get("customer_id"),
@@ -63,7 +71,7 @@ def _parse_llm_json_response(raw_text: str) -> Optional[AnalysisResult]:
             refund_reason=raw_entities.get("refund_reason"),
             new_address=raw_entities.get("new_address"),
             relevant_dates=raw_entities.get("relevant_dates") or [],
-            confidence_scores=raw_entities.get("confidence_scores") or {}
+            confidence_scores=conf_scores
         )
 
         is_ambiguous = bool(data.get("is_ambiguous", False))
@@ -90,8 +98,9 @@ def call_openai_sync(
     conversation_context: Optional[List[Dict[str, Any]]] = None
 ) -> Optional[AnalysisResult]:
     """Synchronous OpenAI API call for intent analysis."""
+    global _OPENAI_KEY_VALID
     api_key = settings.OPENAI_API_KEY
-    if not api_key:
+    if not api_key or _OPENAI_KEY_VALID is False or api_key.startswith("PASTE_"):
         return None
 
     messages: List[Dict[str, str]] = [
@@ -124,9 +133,12 @@ def call_openai_sync(
         with httpx.Client(timeout=8.0) as client:
             resp = client.post(url, headers=headers, json=payload)
             if resp.status_code == 200:
+                _OPENAI_KEY_VALID = True
                 body = resp.json()
                 content = body["choices"][0]["message"]["content"]
                 return _parse_llm_json_response(content)
+            elif resp.status_code in (401, 403):
+                _OPENAI_KEY_VALID = False
             return None
     except Exception as exc:
         logger.error(f"OpenAI sync call error: {exc}")
@@ -138,8 +150,9 @@ def call_gemini_sync(
     conversation_context: Optional[List[Dict[str, Any]]] = None
 ) -> Optional[AnalysisResult]:
     """Synchronous Gemini REST API call with multi-model resilience."""
+    global _GEMINI_KEY_VALID
     api_key = settings.GEMINI_API_KEY
-    if not api_key:
+    if not api_key or _GEMINI_KEY_VALID is False or api_key.startswith("PASTE_"):
         return None
 
     contents: List[Dict[str, Any]] = []
@@ -174,6 +187,7 @@ def call_gemini_sync(
             with httpx.Client(timeout=8.0) as client:
                 resp = client.post(url, json=payload)
                 if resp.status_code == 200:
+                    _GEMINI_KEY_VALID = True
                     body = resp.json()
                     candidates = body.get("candidates", [])
                     if candidates:
@@ -183,6 +197,10 @@ def call_gemini_sync(
                             parsed = _parse_llm_json_response(raw_json)
                             if parsed:
                                 return parsed
+                elif resp.status_code == 400 and ("API_KEY_INVALID" in resp.text or "API key not valid" in resp.text or "invalid" in resp.text.lower()):
+                    _GEMINI_KEY_VALID = False
+                    logger.warning("Gemini API key is invalid. Disabling further Gemini calls.")
+                    break
                 elif resp.status_code in (404, 400):
                     # Try next candidate model
                     continue
@@ -272,8 +290,10 @@ def generate_conversational_llm_response(
         "Generate your direct, empathetic conversational response to the customer:"
     )
 
+    global _GEMINI_KEY_VALID, _OPENAI_KEY_VALID
+
     # 1. Try Gemini
-    if provider == "gemini" and settings.GEMINI_API_KEY:
+    if provider == "gemini" and settings.GEMINI_API_KEY and _GEMINI_KEY_VALID is not False and not settings.GEMINI_API_KEY.startswith("PASTE_"):
         models_to_try = [settings.GEMINI_MODEL] if settings.GEMINI_MODEL in GEMINI_CANDIDATE_MODELS else []
         for m in GEMINI_CANDIDATE_MODELS:
             if m not in models_to_try:
@@ -293,18 +313,23 @@ def generate_conversational_llm_response(
                 with httpx.Client(timeout=8.0) as client:
                     resp = client.post(url, json=payload)
                     if resp.status_code == 200:
+                        _GEMINI_KEY_VALID = True
                         body = resp.json()
                         candidates = body.get("candidates", [])
                         if candidates:
                             parts = candidates[0].get("content", {}).get("parts", [])
                             if parts:
                                 return parts[0].get("text", "").strip()
+                    elif resp.status_code == 400 and ("API_KEY_INVALID" in resp.text or "API key not valid" in resp.text or "invalid" in resp.text.lower()):
+                        _GEMINI_KEY_VALID = False
+                        logger.warning("Gemini API key is invalid. Falling back to offline response generator.")
+                        break
             except Exception as exc:
                 logger.debug(f"Gemini conversational generation error on {model}: {exc}")
                 continue
 
     # 2. Try OpenAI
-    if provider == "openai" and settings.OPENAI_API_KEY:
+    if provider == "openai" and settings.OPENAI_API_KEY and _OPENAI_KEY_VALID is not False and not settings.OPENAI_API_KEY.startswith("PASTE_"):
         try:
             url = "https://api.openai.com/v1/chat/completions"
             headers = {
@@ -323,8 +348,11 @@ def generate_conversational_llm_response(
             with httpx.Client(timeout=8.0) as client:
                 resp = client.post(url, headers=headers, json=payload)
                 if resp.status_code == 200:
+                    _OPENAI_KEY_VALID = True
                     body = resp.json()
                     return body["choices"][0]["message"]["content"].strip()
+                elif resp.status_code in (401, 403):
+                    _OPENAI_KEY_VALID = False
         except Exception as exc:
             logger.debug(f"OpenAI conversational generation error: {exc}")
 
