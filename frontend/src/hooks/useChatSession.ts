@@ -21,7 +21,7 @@ const INITIAL_GREETING: ChatMessage = {
   id: 'msg-welcome',
   sender: 'agent',
   text: 'Hello! I am Aura, your autonomous customer support assistant.\n\nI can help you with order tracking, return requests, order cancellations, and shipping address changes. How may I assist you today?',
-  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  timestamp: '',
   status: 'sent'
 };
 
@@ -108,6 +108,14 @@ export function useChatSession(): UseChatSessionReturn {
   // On initial mount: reset active session cache to guarantee fresh session and check health
   useEffect(() => {
     let isMounted = true;
+    setMessages((currentMessages) => currentMessages.map((message) => (
+      message.id === INITIAL_GREETING.id && !message.timestamp
+        ? {
+            ...message,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        : message
+    )));
     try {
       localStorage.removeItem(STORAGE_CONV_ID);
       localStorage.removeItem(STORAGE_MESSAGES);

@@ -223,8 +223,22 @@ def generate_agent_response(
             from app.core.config import settings
             import httpx
 
-            call_sid = None
-            if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM_NUMBER and settings.PUBLIC_BASE_URL:
+            required_call_settings = {
+                "TWILIO_ACCOUNT_SID": settings.TWILIO_ACCOUNT_SID,
+                "TWILIO_AUTH_TOKEN": settings.TWILIO_AUTH_TOKEN,
+                "TWILIO_FROM_NUMBER": settings.TWILIO_FROM_NUMBER,
+                "PUBLIC_BASE_URL": settings.PUBLIC_BASE_URL,
+            }
+            missing_settings = [name for name, value in required_call_settings.items() if not value]
+
+            if missing_settings:
+                tool_results = {
+                    "success": False,
+                    "status": "not_configured",
+                    "phone_number": phone_num,
+                    "error": f"Missing outbound call settings: {', '.join(missing_settings)}",
+                }
+            else:
                 try:
                     callback_url = f"{settings.PUBLIC_BASE_URL.rstrip('/')}{settings.API_V1_STR}/voice/twilio/answer"
                     calls_url = f"https://api.twilio.com/2010-04-01/Accounts/{settings.TWILIO_ACCOUNT_SID}/Calls.json"
@@ -234,17 +248,21 @@ def generate_agent_response(
                             data={"To": phone_num, "From": settings.TWILIO_FROM_NUMBER, "Url": callback_url},
                             auth=(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
                         )
-                        if resp.status_code in (200, 201):
-                            call_sid = resp.json().get("sid")
-                except Exception:
-                    pass
-
-            tool_results = {
-                "success": True,
-                "status": "call_initiated",
-                "phone_number": phone_num,
-                "call_sid": call_sid
-            }
+                        resp.raise_for_status()
+                    call_sid = resp.json().get("sid")
+                    tool_results = {
+                        "success": True,
+                        "status": "call_initiated",
+                        "phone_number": phone_num,
+                        "call_sid": call_sid,
+                    }
+                except Exception as exc:
+                    tool_results = {
+                        "success": False,
+                        "status": "call_failed",
+                        "phone_number": phone_num,
+                        "error": f"Twilio call failed: {exc}",
+                    }
         else:
             analysis.is_ambiguous = True
             analysis.missing_entities = ["phone_number"]
