@@ -48,6 +48,15 @@ def generate_agent_response(
 
     # 2. Identify customer profile and active orders from DB
     customer_name = entities.customer_name
+    if not customer_name and conversation_history:
+        from app.agent.heuristics import _extract_customer_name
+        for hist_msg in conversation_history:
+            if hist_msg.get("sender") == "user":
+                detected_name = _extract_customer_name(hist_msg.get("text", ""))
+                if detected_name:
+                    customer_name = detected_name
+                    break
+
     customer_orders_data: List[Dict[str, Any]] = []
 
     try:
@@ -197,6 +206,51 @@ def generate_agent_response(
                 "status": "error",
                 "error": error or "Could not create support ticket."
             }
+
+    elif intent == IntentType.OUTBOUND_CALL_REQUEST:
+        phone_num = entities.phone
+        if not phone_num and conversation_history:
+            import re
+            from app.agent.heuristics import PHONE_REGEX
+            for hist_msg in reversed(conversation_history):
+                if hist_msg.get("sender") in ("user", "customer"):
+                    p_match = PHONE_REGEX.search(hist_msg.get("text", ""))
+                    if p_match:
+                        phone_num = p_match.group(0).strip()
+                        break
+
+        if phone_num:
+            from app.core.config import settings
+            import httpx
+
+            call_sid = None
+            if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM_NUMBER and settings.PUBLIC_BASE_URL:
+                try:
+                    callback_url = f"{settings.PUBLIC_BASE_URL.rstrip('/')}{settings.API_V1_STR}/voice/twilio/answer"
+                    calls_url = f"https://api.twilio.com/2010-04-01/Accounts/{settings.TWILIO_ACCOUNT_SID}/Calls.json"
+                    with httpx.Client(timeout=10) as client:
+                        resp = client.post(
+                            calls_url,
+                            data={"To": phone_num, "From": settings.TWILIO_FROM_NUMBER, "Url": callback_url},
+                            auth=(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                        )
+                        if resp.status_code in (200, 201):
+                            call_sid = resp.json().get("sid")
+                except Exception:
+                    pass
+
+            tool_results = {
+                "success": True,
+                "status": "call_initiated",
+                "phone_number": phone_num,
+                "call_sid": call_sid
+            }
+        else:
+            analysis.is_ambiguous = True
+            analysis.missing_entities = ["phone_number"]
+            analysis.clarification_prompt = (
+                f"Hello {customer_name}! " if customer_name else "Hello! "
+            ) + "I would be happy to give you a call! Please provide your phone number with your country code (e.g. +91...)."
 
     # 4. Generate Conversational LLM Response
     llm_reply = generate_conversational_llm_response(

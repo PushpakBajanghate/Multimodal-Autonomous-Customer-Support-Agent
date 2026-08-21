@@ -19,7 +19,15 @@ def create_resilient_engine():
         return create_engine(db_uri, connect_args=connect_args)
 
     try:
-        test_engine = create_engine(db_uri, pool_pre_ping=True, connect_args={"connect_timeout": 2})
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.2)
+        result = sock.connect_ex((settings.POSTGRES_HOST or "127.0.0.1", int(settings.POSTGRES_PORT or 5435)))
+        sock.close()
+        if result != 0:
+            raise ConnectionError("Port closed")
+
+        test_engine = create_engine(db_uri, pool_pre_ping=True)
         with test_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         logger.info(f"Connected successfully to PostgreSQL database ({settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}).")

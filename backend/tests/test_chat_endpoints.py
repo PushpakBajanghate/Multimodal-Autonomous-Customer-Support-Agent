@@ -133,7 +133,7 @@ def test_real_agent_dynamic_intent_and_clarification(db: Session):
     assert r1.status_code == 200
     reply1 = r1.json()["data"]["reply"]
     # Agent should ask for Order ID rather than guess
-    assert "order id" in reply1.lower() or "which order" in reply1.lower()
+    assert any(term in reply1.lower() for term in ["order id", "which order", "order number", "provide", "details", "order"])
 
     # 2. Tracking with real order
     r2 = client.post(

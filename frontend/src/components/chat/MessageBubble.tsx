@@ -93,7 +93,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               isUser ? 'justify-end' : 'justify-start'
             }`}
           >
-            <span>{message.timestamp}</span>
+            <span suppressHydrationWarning>{message.timestamp}</span>
 
             {/* Delivery / Error Status for User Messages */}
             {isUser && (

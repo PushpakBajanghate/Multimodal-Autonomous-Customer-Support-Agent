@@ -21,7 +21,7 @@ const INITIAL_GREETING: ChatMessage = {
   id: 'msg-welcome',
   sender: 'agent',
   text: 'Hello! I am Aura, your autonomous customer support assistant.\n\nI can help you with order tracking, return requests, order cancellations, and shipping address changes. How may I assist you today?',
-  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  timestamp: '',
   status: 'sent'
 };
 
@@ -33,19 +33,6 @@ function getInitialConversationId(): number | null {
 function getInitialMessages(): ChatMessage[] {
   // Always start with the clean welcome greeting on application open
   return [INITIAL_GREETING];
-}
-
-
-function getInitialSavedSessions(): number[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_SAVED_SESSIONS);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 export interface UseChatSessionReturn {
@@ -68,7 +55,7 @@ export interface UseChatSessionReturn {
 export function useChatSession(): UseChatSessionReturn {
   const [conversationId, setConversationId] = useState<number | null>(getInitialConversationId);
   const [messages, setMessages] = useState<ChatMessage[]>(getInitialMessages);
-  const [savedSessionIds, setSavedSessionIds] = useState<number[]>(getInitialSavedSessions);
+  const [savedSessionIds, setSavedSessionIds] = useState<number[]>([]);
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,9 +98,31 @@ export function useChatSession(): UseChatSessionReturn {
     try {
       localStorage.removeItem(STORAGE_CONV_ID);
       localStorage.removeItem(STORAGE_MESSAGES);
+      const raw = localStorage.getItem(STORAGE_SAVED_SESSIONS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && isMounted) {
+          setSavedSessionIds(parsed);
+        }
+      }
     } catch {
       // Ignore storage errors
     }
+
+    // Set initial greeting timestamp on client mount
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === 'msg-welcome' && !m.timestamp
+          ? {
+              ...m,
+              timestamp: new Date().toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+              })
+            }
+          : m
+      )
+    );
 
     checkBackendHealth()
       .then((isHealthy) => {
