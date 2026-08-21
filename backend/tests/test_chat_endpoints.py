@@ -148,3 +148,42 @@ def test_real_agent_dynamic_intent_and_clarification(db: Session):
 
 
 
+
+
+def test_chat_replies_to_english_and_hinglish_greetings(db: Session):
+    customer = db.query(Customer).first()
+
+    english = client.post(
+        "/api/v1/chat",
+        headers=auth_header(customer.id),
+        json={"message": "hello"}
+    )
+    assert english.status_code == 200
+    english_reply = english.json()["data"]["reply"].lower()
+    assert "aura" in english_reply
+    assert "how can i help" in english_reply or "help you" in english_reply
+
+    hinglish = client.post(
+        "/api/v1/chat",
+        headers=auth_header(customer.id),
+        json={"message": "namaste"}
+    )
+    assert hinglish.status_code == 200
+    hinglish_reply = hinglish.json()["data"]["reply"].lower()
+    assert "namaste" in hinglish_reply
+    assert "madad" in hinglish_reply
+
+
+def test_hinglish_tracking_clarification_stays_hinglish(db: Session):
+    customer = db.query(Customer).first()
+
+    response = client.post(
+        "/api/v1/chat",
+        headers=auth_header(customer.id),
+        json={"message": "mera order kahan hai"}
+    )
+
+    assert response.status_code == 200
+    reply = response.json()["data"]["reply"].lower()
+    assert "order id" in reply
+    assert "kripya" in reply or "bhejiye" in reply

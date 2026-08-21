@@ -32,7 +32,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
 
   const detectLanguage = useCallback((text: string) => {
     if (languageMode !== 'auto') return languageMode;
-    if (/[\u0900-\u097F]/.test(text) || /\b(mera|meri|mujhe|haan|nahi|kya|hai|cancel|karna|refund|paisa|kab|kahan)\b/i.test(text)) {
+    if (/[\u0900-\u097F]/.test(text) || /\b(namaste|namaskar|mera|meri|mere|mujhe|haan|nahi|kya|hai|karna|karo|paisa|paise|kab|kahan|madad|sawal|jawab|bhejo|batao|chahiye|wapas)\b/i.test(text)) {
       return 'hi-IN';
     }
     return 'en-IN';
@@ -88,7 +88,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [onSendVoiceTranscript, speakText]);
+  }, [detectLanguage, onSendVoiceTranscript, speakText]);
 
   // Timer for call duration
   useEffect(() => {

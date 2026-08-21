@@ -35,6 +35,17 @@ function getInitialMessages(): ChatMessage[] {
   return [INITIAL_GREETING];
 }
 
+function getInitialSavedSessionIds(): number[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_SAVED_SESSIONS);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface UseChatSessionReturn {
   conversationId: number | null;
   messages: ChatMessage[];
@@ -55,7 +66,7 @@ export interface UseChatSessionReturn {
 export function useChatSession(): UseChatSessionReturn {
   const [conversationId, setConversationId] = useState<number | null>(getInitialConversationId);
   const [messages, setMessages] = useState<ChatMessage[]>(getInitialMessages);
-  const [savedSessionIds, setSavedSessionIds] = useState<number[]>([]);
+  const [savedSessionIds, setSavedSessionIds] = useState<number[]>(getInitialSavedSessionIds);
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -98,31 +109,9 @@ export function useChatSession(): UseChatSessionReturn {
     try {
       localStorage.removeItem(STORAGE_CONV_ID);
       localStorage.removeItem(STORAGE_MESSAGES);
-      const raw = localStorage.getItem(STORAGE_SAVED_SESSIONS);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && isMounted) {
-          setSavedSessionIds(parsed);
-        }
-      }
     } catch {
       // Ignore storage errors
     }
-
-    // Set initial greeting timestamp on client mount
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === 'msg-welcome' && !m.timestamp
-          ? {
-              ...m,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit'
-              })
-            }
-          : m
-      )
-    );
 
     checkBackendHealth()
       .then((isHealthy) => {

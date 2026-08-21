@@ -11,7 +11,7 @@ from app.core.config import settings
 
 DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
 HINGLISH_RE = re.compile(
-    r"\b(mera|meri|mujhe|haan|nahi|kya|hai|order|cancel|karna|refund|paisa|kab|kahan|bhejo)\b",
+    r"\b(namaste|namaskar|mera|meri|mere|mujhe|haan|nahi|kya|hai|karna|karo|paisa|paise|kab|kahan|madad|sawal|jawab|bhejo|batao|chahiye|wapas)\b",
     re.IGNORECASE,
 )
 
@@ -128,12 +128,17 @@ def build_twiml(message: str, action_url: str, language_code: str = "en-IN", aud
     escaped_message = html.escape(message)
     speech_language = "hi-IN" if language_code.startswith("hi") else "en-IN"
     prompt = f'<Play>{html.escape(audio_url)}</Play>' if audio_url else f'<Say language="{speech_language}" voice="Polly.Aditi">{escaped_message}</Say>'
+    retry_message = (
+        "Maine aapki baat nahi suni. Kripya taiyar hone par phir se call kijiye."
+        if speech_language == "hi-IN"
+        else "I did not hear anything. Please call us again when you are ready."
+    )
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<Response>'
         f'<Gather input="speech" speechTimeout="auto" language="{speech_language}" action="{escaped_action}" method="POST">'
         f"{prompt}"
         '</Gather>'
-        f'<Say language="{speech_language}" voice="Polly.Aditi">I did not hear anything. Please call us again when you are ready.</Say>'
+        f'<Say language="{speech_language}" voice="Polly.Aditi">{retry_message}</Say>'
         '</Response>'
     )

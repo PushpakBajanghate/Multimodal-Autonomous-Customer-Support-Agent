@@ -1,8 +1,9 @@
 import base64
-from typing import Dict
+from typing import Dict, Optional
+from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,22 @@ from app.services.voice_service import build_twiml, detect_voice_language, synth
 
 router = APIRouter()
 _AUDIO_CACHE: Dict[str, tuple[bytes, str]] = {}
+
+
+def _public_api_url(request: Optional[Request] = None) -> str:
+    if settings.PUBLIC_BASE_URL:
+        return f"{settings.PUBLIC_BASE_URL.rstrip('/')}{settings.API_V1_STR}"
+    if request is None:
+        return settings.API_V1_STR
+    return f"{str(request.base_url).rstrip('/')}{settings.API_V1_STR}"
+
+
+def _with_query(url: str, **params: object) -> str:
+    clean_params = {key: value for key, value in params.items() if value not in (None, "")}
+    if not clean_params:
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{urlencode(clean_params)}"
 
 
 @router.post("/synthesize", response_model=ApiResponse[VoiceSynthesisResponse])
@@ -58,12 +75,13 @@ def start_outbound_call(payload: OutboundCallRequest, actor=Depends(get_current_
             data=OutboundCallResponse(status="not_configured", configured=False, reason="Twilio calling is not configured."),
         )
 
-    callback_url = f"{settings.PUBLIC_BASE_URL.rstrip('/')}{settings.API_V1_STR}/voice/twilio/answer"
-    params = {
-        "conversation_id": payload.conversation_id or "",
-        "language_code": payload.language_code or "auto",
-        "opening_message": payload.opening_message or "Hello, this is Aura Customer Support. How can I help you today?",
-    }
+    opening_message = payload.opening_message or "Hello, this is Aura Customer Support. How can I help you today?"
+    callback_url = _with_query(
+        f"{settings.PUBLIC_BASE_URL.rstrip('/')}{settings.API_V1_STR}/voice/twilio/answer",
+        conversation_id=payload.conversation_id,
+        language_code=payload.language_code or "auto",
+        opening_message=opening_message,
+    )
     calls_url = f"https://api.twilio.com/2010-04-01/Accounts/{settings.TWILIO_ACCOUNT_SID}/Calls.json"
 
     try:
@@ -71,7 +89,6 @@ def start_outbound_call(payload: OutboundCallRequest, actor=Depends(get_current_
             response = client.post(
                 calls_url,
                 data={"To": payload.to_number, "From": settings.TWILIO_FROM_NUMBER, "Url": callback_url},
-                params=params,
                 auth=(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN),
             )
             response.raise_for_status()
@@ -92,9 +109,18 @@ def start_outbound_call(payload: OutboundCallRequest, actor=Depends(get_current_
 
 
 @router.api_route("/twilio/answer", methods=["GET", "POST"], response_class=Response)
-def twilio_answer(request: Request, opening_message: str = "Hello, this is Aura Customer Support. How can I help you today?", language_code: str = "auto"):
+def twilio_answer(
+    request: Request,
+    opening_message: str = Query(default="Hello, this is Aura Customer Support. How can I help you today?"),
+    language_code: str = Query(default="auto"),
+    conversation_id: Optional[int] = Query(default=None),
+):
     resolved_language = detect_voice_language(opening_message, language_code)
-    action_url = f"{settings.PUBLIC_BASE_URL.rstrip('/') if settings.PUBLIC_BASE_URL else str(request.base_url).rstrip('/')}{settings.API_V1_STR}/voice/twilio/gather"
+    action_url = _with_query(
+        f"{_public_api_url(request)}/voice/twilio/gather",
+        conversation_id=conversation_id,
+        language_code=resolved_language,
+    )
     return Response(content=build_twiml(opening_message, action_url, resolved_language), media_type="application/xml")
 
 
@@ -102,7 +128,8 @@ def twilio_answer(request: Request, opening_message: str = "Hello, this is Aura 
 def twilio_gather(
     request: Request,
     SpeechResult: str = Form(default=""),
-    language_code: str = Form(default="auto"),
+    language_code: str = Query(default="auto"),
+    conversation_id: Optional[int] = Query(default=None),
     db: Session = Depends(get_db),
 ):
     from app.agent.responder import generate_agent_response
@@ -112,11 +139,15 @@ def twilio_gather(
     reply = generate_agent_response(
         db=db,
         message=transcript,
-        conversation_id=0,
+        conversation_id=conversation_id or 0,
         customer_id=None,
         conversation_history=[],
     )
-    action_url = f"{settings.PUBLIC_BASE_URL.rstrip('/') if settings.PUBLIC_BASE_URL else str(request.base_url).rstrip('/')}{settings.API_V1_STR}/voice/twilio/gather"
+    action_url = _with_query(
+        f"{_public_api_url(request)}/voice/twilio/gather",
+        conversation_id=conversation_id,
+        language_code=resolved_language,
+    )
 
     audio_url = None
     audio = synthesize_voice(reply, resolved_language)

@@ -49,3 +49,35 @@ def test_outbound_call_reports_missing_twilio_configuration(monkeypatch):
     assert payload["success"] is False
     assert payload["status"] == "not_configured"
     assert payload["data"]["configured"] is False
+
+
+def test_twilio_answer_preserves_language_and_conversation_context():
+    response = client.get(
+        "/api/v1/voice/twilio/answer",
+        params={
+            "opening_message": "Namaste, main Aura customer support se bol rahi hoon.",
+            "language_code": "hi-IN",
+            "conversation_id": 42,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'language="hi-IN"' in body
+    assert "conversation_id=42" in body
+    assert "language_code=hi-IN" in body
+    assert "/api/v1/voice/twilio/gather" in body
+
+
+def test_twilio_gather_keeps_hindi_query_language():
+    response = client.post(
+        "/api/v1/voice/twilio/gather?language_code=hi-IN&conversation_id=42",
+        data={"SpeechResult": "hello"},
+    )
+
+    assert response.status_code == 200
+    body = response.text.lower()
+    assert 'language="hi-in"' in body
+    assert "conversation_id=42" in body
+    assert "language_code=hi-in" in body
+    assert "aura" in body

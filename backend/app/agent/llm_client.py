@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.agent.schemas import AnalysisResult, IntentType, ExtractedEntities
 from app.agent.prompts import INTENT_SYSTEM_PROMPT, FEW_SHOT_EXAMPLES
 from app.agent.heuristics import analyze_utterance_rule_based
+from app.services.voice_service import detect_voice_language
 
 logger = logging.getLogger("aura.agent.llm")
 
@@ -292,13 +293,20 @@ def generate_conversational_llm_response(
     if not api_key:
         return None
 
+    response_language = detect_voice_language(user_message, "auto")
+    language_instruction = (
+        "Reply in Hindi/Hinglish when the customer uses Hindi, Hinglish, or Devanagari. "
+        "Reply in English when the customer uses English."
+    )
+
     system_prompt = (
         "You are Aura, an autonomous, highly empathetic, articulate, and intelligent AI customer support assistant.\n"
         "Guidelines:\n"
         "1. Address the customer by name if known (e.g. 'Hello Alice!').\n"
         "2. If domain/tool results or active orders are provided, ALWAYS explicitly state the exact Order ID (e.g. 'Order #1'), status, tracking info, carrier, or refund/cancellation confirmation from verified_tool_results.\n"
         "3. If missing_information contains 'order_id' or an action needs an order number, explicitly ask the customer to provide their Order ID or specify which order they want help with.\n"
-        "4. Keep your answer direct, empathetic, and helpful without unnecessary filler."
+        "4. Keep your answer direct, empathetic, and helpful without unnecessary filler.\n"
+        f"5. {language_instruction} Target response language code: {response_language}."
     )
 
     context_payload = {
@@ -308,7 +316,8 @@ def generate_conversational_llm_response(
         "customer_active_orders": customer_orders or [],
         "missing_information": missing_entities or [],
         "suggested_clarification": clarification_prompt,
-        "recent_conversation": (conversation_context or [])[-8:]
+        "recent_conversation": (conversation_context or [])[-8:],
+        "preferred_response_language": response_language
     }
 
     user_prompt = (
@@ -443,6 +452,8 @@ def generate_intelligent_offline_response(
     """
     greeting = f"Hello {customer_name}! " if customer_name else "Hello! "
     msg_lower = user_message.lower().strip()
+    is_hindi = detect_voice_language(user_message, "auto").startswith("hi")
+    hindi_greeting = f"Namaste {customer_name}! " if customer_name else "Namaste! "
 
     # Ask the focused clarification produced by the intent engine rather than
     # falling through to a generic welcome response.
@@ -588,12 +599,22 @@ def generate_intelligent_offline_response(
                 f"Hello {customer_name}! It's a pleasure to assist you. "
                 f"I am Aura, your autonomous customer support assistant. How can I help you today with your orders, tracking, or account?"
             )
-        elif any(w in msg_lower for w in ["hi", "hello", "hey", "good morning", "good evening"]):
+        elif any(w in msg_lower for w in ["hi", "hello", "hey", "good morning", "good evening", "namaste", "namaskar"]):
+            if is_hindi:
+                return (
+                    f"{hindi_greeting}Main Aura, aapki customer support assistant hoon. "
+                    f"Aap order tracking, return, refund, cancellation, delivery, ya account ke baare mein pooch sakte hain."
+                )
             return (
                 f"Hello! I am Aura, your customer support assistant. "
                 f"How can I help you today with your orders, returns, tracking, or account?"
             )
-        elif any(w in msg_lower for w in ["who are you", "what can you do", "help"]):
+        elif any(w in msg_lower for w in ["who are you", "what can you do", "help", "madad"]):
+            if is_hindi:
+                return (
+                    f"Main Aura, ek autonomous customer support AI hoon. Main order tracking, delivery ETA, refund, return, cancellation, address update, password reset, aur support ticket mein madad kar sakti hoon. "
+                    f"Aapko kis cheez mein madad chahiye?"
+                )
             return (
                 f"I am Aura, an autonomous customer support AI. I can assist you with:\n"
                 f"• Real-time order tracking and delivery ETAs\n"
@@ -604,6 +625,11 @@ def generate_intelligent_offline_response(
                 f"How may I assist you today?"
             )
         else:
+            if is_hindi:
+                return (
+                    f"{hindi_greeting}Main order, delivery, refund, cancellation, address update, aur account issues mein madad kar sakti hoon. "
+                    f"Kripya apna Order ID bhejiye ya bataiye aapko kis problem mein help chahiye."
+                )
             return (
                 f"Thank you for contacting customer support. I am here to assist you with order inquiries, shipments, refunds, and account updates. "
                 f"Could you please share your Order ID or describe what you need help with?"

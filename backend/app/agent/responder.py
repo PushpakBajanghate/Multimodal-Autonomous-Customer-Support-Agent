@@ -4,6 +4,7 @@ and intelligent conversational responses powered by LLM Reasoning Brain.
 """
 
 from typing import List, Dict, Any, Optional
+from urllib.parse import urlencode
 from sqlalchemy.orm import Session
 
 from app.models.models import Customer, Order
@@ -23,6 +24,45 @@ from app.services.customer_service import (
     request_password_reset
 )
 from app.services.ticket_service import create_escalation_ticket
+from app.services.voice_service import detect_voice_language
+
+
+def _is_plain_greeting(text: str) -> bool:
+    normalized = text.lower().strip(" \t\r\n.!?,")
+    return normalized in {"hi", "hello", "hey", "namaste", "namaskar", "good morning", "good evening"}
+
+
+def _hindi_greeting(customer_name: Optional[str] = None) -> str:
+    name = f" {customer_name}" if customer_name else ""
+    return (
+        f"Namaste{name}! Main Aura, aapki AI customer support assistant hoon. "
+        "Aap order tracking, refund, cancellation, address update, password reset, ya support ticket ke liye pooch sakte hain. "
+        "Batayiye, main aapki kaise madad kar sakti hoon?"
+    )
+
+
+def _hindi_clarification(intent: IntentType, missing_entities: List[str], customer_name: Optional[str] = None) -> Optional[str]:
+    prefix = f"Namaste {customer_name}! " if customer_name else "Namaste! "
+    if intent == IntentType.ORDER_TRACKING and "order_id" in missing_entities:
+        return f"{prefix}Main aapke order ka live status check kar sakti hoon. Kripya apna Order ID bhejiye, jaise Order #1."
+    if intent == IntentType.ORDER_CANCELLATION and "order_id" in missing_entities:
+        return f"{prefix}Kripya batayiye kaunsa Order ID cancel karna hai."
+    if intent == IntentType.REFUND_REQUEST and "order_id" in missing_entities:
+        return f"{prefix}Refund process karne ke liye kripya Order ID aur refund ka reason bhejiye."
+    if intent == IntentType.ADDRESS_UPDATE:
+        return f"{prefix}Address update ke liye kripya Order ID aur poora naya delivery address bhejiye."
+    if intent == IntentType.PASSWORD_RESET and "email" in missing_entities:
+        return f"{prefix}Password reset link bhejne ke liye kripya apna account email address share kijiye."
+    return None
+
+
+def _build_voice_callback_url(base_url: str, conversation_id: int, language_code: str, opening_message: str) -> str:
+    params = urlencode({
+        "conversation_id": conversation_id,
+        "language_code": language_code,
+        "opening_message": opening_message,
+    })
+    return f"{base_url}?{params}"
 
 
 def generate_agent_response(
@@ -45,6 +85,7 @@ def generate_agent_response(
     intent = analysis.intent
     entities = analysis.entities
     resolved_customer_id = customer_id or entities.customer_id or 1
+    preferred_language = detect_voice_language(message, "auto")
 
     # 2. Identify customer profile and active orders from DB
     customer_name = entities.customer_name
@@ -77,6 +118,18 @@ def generate_agent_response(
                 })
     except Exception:
         pass
+
+    if intent == IntentType.UNKNOWN and _is_plain_greeting(message):
+        if preferred_language.startswith("hi"):
+            return _hindi_greeting(customer_name)
+        return (
+            f"Hello {customer_name}! " if customer_name else "Hello! "
+        ) + "I am Aura, your customer support assistant. How can I help you today with orders, refunds, cancellations, delivery, or account issues?"
+
+    if preferred_language.startswith("hi"):
+        hindi_prompt = _hindi_clarification(intent, analysis.missing_entities, customer_name)
+        if hindi_prompt:
+            analysis.clarification_prompt = hindi_prompt
 
     # If order_id not in entities but customer has exactly 1 active order, we can relate it
     target_order_id = entities.order_id
@@ -226,7 +279,13 @@ def generate_agent_response(
             call_sid = None
             if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM_NUMBER and settings.PUBLIC_BASE_URL:
                 try:
-                    callback_url = f"{settings.PUBLIC_BASE_URL.rstrip('/')}{settings.API_V1_STR}/voice/twilio/answer"
+                    opening_message = "Hello, this is Aura Customer Support. How can I help you today?"
+                    callback_url = _build_voice_callback_url(
+                        f"{settings.PUBLIC_BASE_URL.rstrip('/')}{settings.API_V1_STR}/voice/twilio/answer",
+                        conversation_id,
+                        preferred_language,
+                        opening_message,
+                    )
                     calls_url = f"https://api.twilio.com/2010-04-01/Accounts/{settings.TWILIO_ACCOUNT_SID}/Calls.json"
                     with httpx.Client(timeout=10) as client:
                         resp = client.post(
@@ -248,9 +307,14 @@ def generate_agent_response(
         else:
             analysis.is_ambiguous = True
             analysis.missing_entities = ["phone_number"]
-            analysis.clarification_prompt = (
-                f"Hello {customer_name}! " if customer_name else "Hello! "
-            ) + "I would be happy to give you a call! Please provide your phone number with your country code (e.g. +91...)."
+            if preferred_language.startswith("hi"):
+                analysis.clarification_prompt = (
+                    f"Namaste {customer_name}! " if customer_name else "Namaste! "
+                ) + "Main aapko AI voice call kar sakti hoon. Kripya country code ke saath phone number bhejiye, jaise +91..."
+            else:
+                analysis.clarification_prompt = (
+                    f"Hello {customer_name}! " if customer_name else "Hello! "
+                ) + "I would be happy to give you a call! Please provide your phone number with your country code (e.g. +91...)."
 
     # 4. Generate Conversational LLM Response
     llm_reply = generate_conversational_llm_response(
