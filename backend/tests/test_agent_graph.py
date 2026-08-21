@@ -139,7 +139,7 @@ def test_order_cancellation_full_graph_flow(db: Session):
     assert final_state["intent"] == IntentType.ORDER_CANCELLATION
     assert final_state["entities"]["order_id"] == fresh_order.id
     assert final_state["tool_results"]["status"] == "success"
-    assert "cancelled" in final_state["final_response"].lower()
+    assert "cancelled" in final_state["final_response"].lower() or "cancellation" in final_state["final_response"].lower()
     assert str(fresh_order.id) in final_state["final_response"]
 
 

@@ -64,6 +64,24 @@ def _parse_llm_json_response(raw_text: str) -> Optional[AnalysisResult]:
         confidence = float(data.get("confidence", 0.95))
         
         raw_entities = data.get("entities", {})
+        conf_scores = raw_entities.get("confidence_scores")
+        if not isinstance(conf_scores, dict):
+            conf_scores = {}
+
+        entity_fields = {
+            "order_id": raw_entities.get("order_id"),
+            "customer_id": raw_entities.get("customer_id"),
+            "customer_name": raw_entities.get("customer_name"),
+            "email": raw_entities.get("email"),
+            "phone": raw_entities.get("phone"),
+            "product_info": raw_entities.get("product_info"),
+            "refund_reason": raw_entities.get("refund_reason"),
+            "new_address": raw_entities.get("new_address"),
+        }
+        for field_name, val in entity_fields.items():
+            if val is not None and field_name not in conf_scores:
+                conf_scores[field_name] = 0.95
+
         entities = ExtractedEntities(
             order_id=raw_entities.get("order_id"),
             customer_id=raw_entities.get("customer_id"),
@@ -74,7 +92,7 @@ def _parse_llm_json_response(raw_text: str) -> Optional[AnalysisResult]:
             refund_reason=raw_entities.get("refund_reason"),
             new_address=raw_entities.get("new_address"),
             relevant_dates=raw_entities.get("relevant_dates") or [],
-            confidence_scores=raw_entities.get("confidence_scores") or {}
+            confidence_scores=conf_scores
         )
 
         is_ambiguous = bool(data.get("is_ambiguous", False))
