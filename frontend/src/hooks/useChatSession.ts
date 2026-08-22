@@ -106,6 +106,14 @@ export function useChatSession(): UseChatSessionReturn {
   // On initial mount: reset active session cache to guarantee fresh session and check health
   useEffect(() => {
     let isMounted = true;
+    setMessages((currentMessages) => currentMessages.map((message) => (
+      message.id === INITIAL_GREETING.id && !message.timestamp
+        ? {
+            ...message,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        : message
+    )));
     try {
       localStorage.removeItem(STORAGE_CONV_ID);
       localStorage.removeItem(STORAGE_MESSAGES);

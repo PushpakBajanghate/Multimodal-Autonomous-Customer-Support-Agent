@@ -147,6 +147,23 @@ def test_real_agent_dynamic_intent_and_clarification(db: Session):
     assert "status" in reply2.lower() or "found" in reply2.lower() or "order" in reply2.lower()
 
 
+def test_chat_call_request_does_not_claim_success_without_twilio_config(db: Session, monkeypatch):
+    monkeypatch.setattr("app.core.config.settings.TWILIO_ACCOUNT_SID", None)
+    monkeypatch.setattr("app.core.config.settings.TWILIO_AUTH_TOKEN", None)
+    monkeypatch.setattr("app.core.config.settings.TWILIO_FROM_NUMBER", None)
+    monkeypatch.setattr("app.core.config.settings.PUBLIC_BASE_URL", None)
+    customer = db.query(Customer).first()
+
+    response = client.post(
+        "/api/v1/chat",
+        headers=auth_header(customer.id),
+        json={"message": "call me on +918855998802"},
+    )
+
+    assert response.status_code == 200
+    reply = response.json()["data"]["reply"].lower()
+    assert "could not place" in reply or "not configured" in reply or "configure twilio" in reply
+    assert "answer your phone" not in reply
 
 
 
