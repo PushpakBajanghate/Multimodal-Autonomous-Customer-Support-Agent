@@ -1,21 +1,19 @@
 'use client';
 
 import React from 'react';
+import { AuraBrandMark } from './AuraBrandMark';
 
 export const TypingIndicator: React.FC = () => {
   return (
-    <div className="flex items-end gap-2.5 max-w-[85%] self-start animate-fade-in my-1">
-      {/* Bot Mini Avatar */}
-      <div className="w-7 h-7 rounded-full bg-indigo-950 border border-indigo-700/60 flex items-center justify-center text-xs shrink-0 mb-0.5 shadow-sm">
-        ✨
-      </div>
+    <div className="my-1 flex max-w-[85%] animate-fade-in items-end gap-2.5 self-start">
+      <AuraBrandMark className="aura-message-mark mb-0.5 shrink-0" />
 
-      <div className="px-4 py-3 rounded-2xl rounded-bl-sm bg-slate-800 border border-slate-700/50 shadow-sm flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.3s]" />
-        <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:-0.15s]" />
-        <span className="w-2 h-2 rounded-full bg-sky-400 animate-bounce" />
-        <span className="text-[11px] text-slate-400 font-medium ml-1.5 select-none">
-          Aura is typing...
+      <div className="flex items-center gap-1.5 rounded-[18px] rounded-bl-[5px] border border-[#eeecf3] bg-[#faf9fc] px-4 py-3 shadow-sm">
+        <span className="h-2 w-2 animate-bounce rounded-full bg-[#8a78e5] [animation-delay:-0.3s]" />
+        <span className="h-2 w-2 animate-bounce rounded-full bg-[#a394ee] [animation-delay:-0.15s]" />
+        <span className="h-2 w-2 animate-bounce rounded-full bg-[#c0b5fb]" />
+        <span className="ml-1.5 select-none text-[11px] font-medium text-[#9692a5]">
+          Aura Support is typing...
         </span>
       </div>
     </div>

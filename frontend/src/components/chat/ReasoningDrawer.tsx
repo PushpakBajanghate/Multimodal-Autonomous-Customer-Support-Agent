@@ -32,24 +32,24 @@ export const ReasoningDrawer: React.FC<ReasoningDrawerProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/70 backdrop-blur-sm transition-opacity">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-[#211c38]/25 backdrop-blur-sm transition-opacity">
       <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col">
+        <div className="flex w-screen max-w-md flex-col border-l border-[#e9e6f0] bg-white shadow-2xl">
           {/* Drawer Header */}
-          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+          <div className="flex items-center justify-between border-b border-[#efedf5] bg-white px-6 py-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-sm">
-                🧠
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e6e1fb] bg-[#f2efff] text-[#715fce]">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M12 4a3 3 0 0 0-5.8 1.1A3.5 3.5 0 0 0 5 11a3.5 3.5 0 0 0 1 6.8A3 3 0 0 0 12 19V4Zm0 0a3 3 0 0 1 5.8 1.1A3.5 3.5 0 0 1 19 11a3.5 3.5 0 0 1-1 6.8A3 3 0 0 1 12 19V4Z" /></svg>
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white">Agent Brain & Reasoning</h2>
-                <p className="text-[11px] text-slate-400">Live LangGraph State Machine Telemetry</p>
+                <h2 className="text-sm font-bold text-[#302d43]">Brain Trace</h2>
+                <p className="text-[11px] text-[#9692a5]">Aura Support reasoning activity</p>
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              className="cursor-pointer rounded-lg p-1 text-[#9692a5] transition-colors hover:bg-[#f5f3fa] hover:text-[#4d4960]"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -58,25 +58,25 @@ export const ReasoningDrawer: React.FC<ReasoningDrawerProps> = ({
           </div>
 
           {/* Drawer Body Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex-1 space-y-6 overflow-y-auto p-6">
             {/* Live Model Badge */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-2.5">
+            <div className="space-y-2.5 rounded-xl border border-[#ebe8f3] bg-[#faf9fd] p-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300">Active NLU Engine:</span>
-                <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800 text-[11px] font-mono font-medium">
+                <span className="text-xs font-semibold text-[#686478]">Active NLU Engine:</span>
+                <span className="rounded border border-[#e6e1fb] bg-[#f4f1ff] px-2 py-0.5 text-[11px] font-mono font-medium text-[#6b58d5]">
                   gemini-3.6-flash
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300">Session Identifier:</span>
-                <span className="text-xs font-mono text-slate-400">
+                <span className="text-xs font-semibold text-[#686478]">Session Identifier:</span>
+                <span className="text-xs font-mono text-[#8e8a9e]">
                   {conversationId ? `Conversation #${conversationId}` : 'Ephemeral Session'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300">Backend Brain Status:</span>
-                <span className={`text-[11px] font-semibold flex items-center gap-1.5 ${isBackendOnline ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  <span className={`w-2 h-2 rounded-full ${isBackendOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                <span className="text-xs font-semibold text-[#686478]">Backend Brain Status:</span>
+                <span className={`flex items-center gap-1.5 text-[11px] font-semibold ${isBackendOnline ? 'text-emerald-600' : 'text-rose-500'}`}>
+                  <span className={`h-2 w-2 rounded-full ${isBackendOnline ? 'animate-pulse bg-emerald-500' : 'bg-rose-500'}`} />
                   {isBackendOnline ? 'Online & Healthy' : 'Offline'}
                 </span>
               </div>
@@ -84,22 +84,22 @@ export const ReasoningDrawer: React.FC<ReasoningDrawerProps> = ({
 
             {/* Trajectory Flow Timeline */}
             <div>
-              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <span>Autonomous Trajectory Pipeline (10 Nodes)</span>
+              <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#777388]">
+                <span>Agent activity</span>
               </h3>
 
-              <div className="space-y-3 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-slate-800">
+              <div className="relative space-y-3 before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-[#eeeaf5]">
                 {trajectorySteps.map((step, idx) => (
                   <div key={idx} className="relative flex items-start gap-3 pl-1">
-                    <div className="w-5 h-5 rounded-full bg-indigo-950 border border-indigo-500 text-indigo-400 text-[10px] flex items-center justify-center font-bold shrink-0 mt-0.5 z-10">
+                    <div className="z-10 mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#ded8f9] bg-[#f4f1ff] text-[10px] font-bold text-[#6c59d3]">
                       {idx + 1}
                     </div>
-                    <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 flex-1">
+                    <div className="flex-1 rounded-lg border border-[#efedf5] bg-white p-2.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-slate-200">{step.label}</span>
-                        <span className="text-[9px] font-mono text-emerald-400 uppercase">Passed</span>
+                        <span className="text-xs font-semibold text-[#4b475c]">{step.label}</span>
+                        <span className="text-[9px] font-mono uppercase text-emerald-600">Passed</span>
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-1">{step.desc}</p>
+                      <p className="mt-1 text-[11px] text-[#8f8b9f]">{step.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -107,11 +107,11 @@ export const ReasoningDrawer: React.FC<ReasoningDrawerProps> = ({
             </div>
 
             {/* Policy & Safety Enforcement Summary */}
-            <div className="bg-indigo-950/20 border border-indigo-800/40 rounded-xl p-4 space-y-2">
-              <h4 className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
-                <span>🛡️ Policy & Guardrail Enforcement</span>
+            <div className="space-y-2 rounded-xl border border-[#e8e3fb] bg-[#f7f5ff] p-4">
+              <h4 className="flex items-center gap-1.5 text-xs font-bold text-[#6552c9]">
+                <span>Policy & safety checks</span>
               </h4>
-              <ul className="text-[11px] text-slate-300 space-y-1 list-disc list-inside">
+              <ul className="list-inside list-disc space-y-1 text-[11px] text-[#6f6a82]">
                 <li>30-day strict return/refund window verification</li>
                 <li>Shipped orders locked against in-transit cancellations</li>
                 <li>Bounded retry limit (max 1 retry before human escalation)</li>

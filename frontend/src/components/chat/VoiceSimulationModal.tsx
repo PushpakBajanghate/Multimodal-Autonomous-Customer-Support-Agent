@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { synthesizeVoice } from '../../services/chatApi';
+import { AuraBrandMark } from './AuraBrandMark';
 
 interface VoiceSimulationModalProps {
   isOpen: boolean;
@@ -140,11 +141,11 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
     setCallDuration(0);
     setIsCalling(true);
     setTranscript('');
-    setAgentSpokenResponse('Connected to Aura Voice Gateway. Speak your inquiry into the microphone...');
+    setAgentSpokenResponse('Connected to Aura Support. Speak your inquiry into the microphone...');
     speakText(
       languageMode === 'hi-IN'
-        ? 'Namaste, aap Aura Voice Support se connected hain. Main aapki kaise madad kar sakti hoon?'
-        : 'Hello, you are connected to Aura Voice Support. How can I help you with your order today?',
+        ? 'Namaste, aap Aura Support se connected hain. Main aapki kaise madad kar sakti hoon?'
+        : 'Hello, you are connected to Aura Support. How can I help you with your order today?',
       languageMode
     );
 
@@ -185,16 +186,16 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md transition-all">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden flex flex-col items-center text-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#211c38]/30 p-4 backdrop-blur-sm transition-all">
+      <div className="relative flex w-full max-w-md flex-col items-center overflow-hidden rounded-[24px] border border-[#ebe8f3] bg-white p-6 text-center shadow-[0_24px_70px_rgba(31,25,61,.2)]">
         {/* Background ambient glow */}
-        <div className={`absolute top-0 inset-x-0 h-32 bg-gradient-to-b ${isCalling ? 'from-blue-600/20' : 'from-slate-800/20'} to-transparent -z-10`} />
+        <div className={`absolute inset-x-0 top-0 -z-10 h-36 bg-gradient-to-b ${isCalling ? 'from-[#8a78e5]/15' : 'from-[#f1eeff]'} to-transparent`} />
 
         {/* Close Button */}
         <button
           type="button"
           onClick={endCall}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+          className="absolute right-4 top-4 cursor-pointer rounded-lg p-1 text-[#9692a5] transition-colors hover:bg-[#f5f3fa] hover:text-[#4d4960]"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -203,40 +204,43 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
 
         {/* Agent Avatar & Waveform Animation */}
         <div className="relative my-4 flex items-center justify-center">
-          <div className={`w-24 h-24 rounded-full flex items-center justify-center text-3xl shadow-xl transition-all duration-500 ${
+          <div className={`flex h-24 w-24 items-center justify-center rounded-full text-3xl shadow-xl transition-all duration-500 ${
             isCalling
-              ? 'bg-gradient-to-tr from-blue-600 to-indigo-500 ring-8 ring-blue-500/20 animate-pulse'
-              : 'bg-slate-800 border border-slate-700'
+              ? 'animate-pulse bg-gradient-to-tr from-[#8876ed] to-[#5945c7] ring-8 ring-[#8573e7]/15'
+              : 'border border-[#e9e6f0] bg-[#f5f3fb]'
           }`}>
-            🎙️
+            <svg className={`h-9 w-9 ${isCalling ? 'text-white' : 'text-[#7461d7]'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 12a7 7 0 0 0 14 0m-7 7v3m-4 0h8" /></svg>
           </div>
           {isCalling && (
-            <div className="absolute -inset-3 rounded-full border border-blue-400/30 animate-ping pointer-events-none" />
+            <div className="pointer-events-none absolute -inset-3 animate-ping rounded-full border border-[#8573e7]/30" />
           )}
         </div>
 
-        <h3 className="text-lg font-bold text-white">Aura Voice Channel</h3>
-        <p className="text-xs text-slate-400 mt-1">
+        <div className="flex items-center gap-2">
+          <AuraBrandMark />
+          <h3 className="text-lg font-bold text-[#302d43]">Aura Support</h3>
+        </div>
+        <p className="mt-1 text-xs text-[#9692a5]">
           {isCalling ? `Active Call • ${formatDuration(callDuration)} (Session #${conversationId || 'New'})` : 'Omnichannel Voice Telephony Simulation'}
         </p>
 
         {!isCalling && (
-          <div className="grid grid-cols-2 gap-2 w-full mt-4 text-left">
-            <label className="text-[11px] text-slate-400">
+          <div className="mt-4 grid w-full grid-cols-2 gap-2 text-left">
+            <label className="text-[11px] text-[#8e8a9e]">
               Speech Language
               <select
                 value={languageMode}
                 onChange={event => setLanguageMode(event.target.value as 'auto' | 'hi-IN' | 'en-IN')}
-                className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 px-2 py-2 text-xs text-slate-200 outline-none focus:border-blue-500"
+                className="mt-1 w-full rounded-lg border border-[#e9e6f0] bg-[#fbfaff] px-2 py-2 text-xs text-[#504c63] outline-none focus:border-[#8a78e5]"
               >
                 <option value="auto">Auto Hindi/English</option>
                 <option value="hi-IN">Hindi / Hinglish</option>
                 <option value="en-IN">English India</option>
               </select>
             </label>
-            <div className="text-[11px] text-slate-400">
+            <div className="text-[11px] text-[#8e8a9e]">
               Voice Engine
-              <div className="mt-1 rounded-lg bg-slate-950 border border-slate-800 px-2 py-2 text-xs text-slate-200 min-h-[34px]">
+              <div className="mt-1 min-h-[34px] rounded-lg border border-[#e9e6f0] bg-[#fbfaff] px-2 py-2 text-xs text-[#504c63]">
                 {voiceProvider}
               </div>
             </div>
@@ -249,7 +253,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
             {[40, 70, 90, 60, 100, 50, 80, 45, 95, 30].map((h, i) => (
               <div
                 key={i}
-                className="w-1 bg-blue-400 rounded-full transition-all duration-300 animate-pulse"
+                className="w-1 animate-pulse rounded-full bg-[#806de0] transition-all duration-300"
                 style={{
                   height: `${isProcessing ? h : 16}px`,
                   animationDelay: `${i * 100}ms`
@@ -260,26 +264,26 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
         )}
 
         {/* Spoken Text Transcripts */}
-        <div className="w-full bg-slate-950/70 border border-slate-800 rounded-xl p-3 my-3 text-left min-h-[90px] max-h-[120px] overflow-y-auto">
+        <div className="my-3 max-h-[120px] min-h-[90px] w-full overflow-y-auto rounded-xl border border-[#eeebf4] bg-[#faf9fd] p-3 text-left">
           {transcript ? (
-            <div className="text-xs text-slate-200">
-              <span className="text-blue-400 font-semibold">You said: </span>
+            <div className="text-xs text-[#504c63]">
+              <span className="font-semibold text-[#6b58d5]">You said: </span>
               {transcript}
             </div>
           ) : (
-            <p className="text-xs text-slate-500 italic text-center pt-3">
+            <p className="pt-3 text-center text-xs italic text-[#a09caf]">
               {isCalling ? 'Listening to speech input...' : 'Click &quot;Start Voice Call&quot; to begin speaking with Aura.'}
             </p>
           )}
 
           {agentSpokenResponse && (
-            <div className="text-xs text-slate-300 mt-2 pt-2 border-t border-slate-800">
-              <span className="text-emerald-400 font-semibold">Aura: </span>
+            <div className="mt-2 border-t border-[#ece9f2] pt-2 text-xs text-[#716d80]">
+              <span className="font-semibold text-emerald-600">Aura: </span>
               {agentSpokenResponse}
             </div>
           )}
           {voiceNotice && (
-            <div className="text-[11px] text-amber-300 mt-2 pt-2 border-t border-slate-800">
+            <div className="mt-2 border-t border-[#ece9f2] pt-2 text-[11px] text-amber-700">
               {voiceNotice}
             </div>
           )}
@@ -288,7 +292,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
         {/* Preset Voice Prompt Shortcuts */}
         {isCalling && (
           <div className="w-full my-2">
-            <p className="text-[11px] text-slate-400 mb-1 text-left">Quick Voice Test Queries:</p>
+            <p className="mb-1 text-left text-[11px] text-[#8e8a9e]">Quick voice prompts:</p>
             <div className="flex flex-wrap gap-1.5">
               {[
                 "Where is my order #1?",
@@ -301,7 +305,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
                   type="button"
                   onClick={() => handleVoiceSubmit(query)}
                   disabled={isProcessing}
-                  className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 transition-colors cursor-pointer"
+                  className="cursor-pointer rounded-lg border border-[#e9e6f0] bg-white px-2 py-1 text-[11px] text-[#777388] transition-colors hover:border-[#d9d2f5] hover:bg-[#f8f6ff]"
                 >
                   &quot;{query}&quot;
                 </button>
@@ -316,7 +320,7 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
             <button
               type="button"
               onClick={startCall}
-              className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#6654d9] px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-[#5946cf] active:scale-95"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -330,18 +334,18 @@ export const VoiceSimulationModal: React.FC<VoiceSimulationModalProps> = ({
                 onClick={() => setIsMuted(!isMuted)}
                 className={`p-3 rounded-xl border text-sm font-semibold transition-all cursor-pointer ${
                   isMuted
-                    ? 'bg-amber-900/40 text-amber-200 border-amber-700'
-                    : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-[#e9e6f0] bg-[#f7f6fb] text-[#716d80] hover:bg-[#eeecf4]'
                 }`}
                 title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
               >
-                {isMuted ? '🔇 Muted' : '🎤 Mute'}
+                {isMuted ? 'Muted' : 'Mute mic'}
               </button>
 
               <button
                 type="button"
                 onClick={endCall}
-                className="flex-1 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-rose-600 active:scale-95"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />

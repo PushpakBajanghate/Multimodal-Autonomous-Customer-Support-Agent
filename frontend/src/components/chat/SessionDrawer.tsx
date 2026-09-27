@@ -24,23 +24,23 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-fade-in">
+    <div className="fixed inset-0 z-50 flex animate-fade-in justify-end bg-[#211c38]/25 backdrop-blur-sm">
       {/* Backdrop click to close */}
       <div className="flex-1" onClick={onClose} />
 
       {/* Drawer content */}
-      <div className="w-full max-w-sm bg-slate-900 border-l border-slate-800 p-6 flex flex-col justify-between shadow-2xl h-full overflow-y-auto">
+      <div className="flex h-full w-full max-w-sm flex-col justify-between overflow-y-auto border-l border-[#e9e6f0] bg-white p-6 shadow-2xl">
         <div>
           {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div className="flex items-center justify-between border-b border-[#efedf5] pb-4">
             <div>
-              <h2 className="text-base font-bold text-white">Support Sessions</h2>
-              <p className="text-xs text-slate-400">Conversations saved in PostgreSQL</p>
+              <h2 className="text-base font-bold text-[#302d43]">Conversation history</h2>
+              <p className="text-xs text-[#9692a5]">Pick up where you left off</p>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors cursor-pointer"
+              className="cursor-pointer rounded-lg p-1.5 text-[#9692a5] transition-colors hover:bg-[#f5f3fa] hover:text-[#4d4960]"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -49,30 +49,30 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
           </div>
 
           {/* Current Session Info */}
-          <div className="mt-5 p-4 rounded-xl bg-slate-950 border border-slate-800/80">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block mb-1">
+          <div className="mt-5 rounded-xl border border-[#ebe8f3] bg-[#faf9fd] p-4">
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#a09caf]">
               Active Session
             </span>
             <div className="flex items-center justify-between">
-              <span className="font-mono text-sm font-semibold text-blue-400">
+              <span className="font-mono text-sm font-semibold text-[#6b58d5]">
                 {currentConversationId ? `Session #${currentConversationId}` : 'Unassigned (Starts on send)'}
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-900">
+              <span className="rounded-full border border-[#d8f0e4] bg-[#f0faf5] px-2 py-0.5 text-[10px] text-[#35865d]">
                 Active
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-2">
+            <p className="mt-2 text-[11px] leading-relaxed text-[#8e8a9e]">
               Messages in this session are automatically persisted to the backend database tables.
             </p>
           </div>
 
           {/* Past Sessions List */}
           <div className="mt-6">
-            <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2.5">
+            <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[#777388]">
               Recent Sessions
             </h3>
             {savedSessionIds.length === 0 ? (
-              <p className="text-xs text-slate-500 italic py-3 text-center">
+              <p className="py-3 text-center text-xs italic text-[#a09caf]">
                 No previous sessions recorded yet.
               </p>
             ) : (
@@ -87,20 +87,20 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
                     }}
                     className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                       id === currentConversationId
-                        ? 'bg-blue-950/60 border-blue-800/80 text-blue-200'
-                        : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white'
+                        ? 'border-[#dcd5fb] bg-[#f5f2ff] text-[#5e4bc8]'
+                        : 'border-[#efedf5] bg-white text-[#625e73] hover:border-[#dcd5fb] hover:text-[#5140bb]'
                     }`}
                   >
                     <div>
                       <span className="font-mono font-medium text-xs">
                         Conversation #{id}
                       </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">
+                      <span className="mt-0.5 block text-[10px] text-[#a09caf]">
                         Click to restore history
                       </span>
                     </div>
                     {id === currentConversationId && (
-                      <span className="text-blue-400 text-xs font-bold">✓ Active</span>
+                      <span className="text-xs font-bold text-[#6b58d5]">✓ Active</span>
                     )}
                   </button>
                 ))}
@@ -110,14 +110,14 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="pt-6 border-t border-slate-800 space-y-2.5">
+        <div className="space-y-2.5 border-t border-[#efedf5] pt-6">
           <button
             type="button"
             onClick={() => {
               onNewChat();
               onClose();
             }}
-            className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-md transition-colors cursor-pointer"
+            className="w-full cursor-pointer rounded-xl bg-[#6654d9] px-4 py-2.5 text-xs font-semibold text-white shadow-md transition-colors hover:bg-[#5946cf]"
           >
             + Start Fresh Conversation
           </button>
@@ -127,7 +127,7 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
               onClearHistory();
               onClose();
             }}
-            className="w-full py-2 px-4 rounded-xl bg-slate-800/80 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700/60 hover:border-rose-900 transition-colors text-xs font-medium cursor-pointer"
+            className="w-full cursor-pointer rounded-xl border border-[#ebe8f1] bg-white px-4 py-2 text-xs font-medium text-[#8c879b] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
           >
             Clear Local Cache
           </button>
