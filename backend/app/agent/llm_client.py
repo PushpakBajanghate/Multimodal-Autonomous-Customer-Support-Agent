@@ -179,6 +179,7 @@ def call_gemini_model_intent(
             elif resp.status_code == 400 and ("API_KEY_INVALID" in resp.text or "API key not valid" in resp.text):
                 _GEMINI_KEY_VALID = False
     except Exception as exc:
+        _set_model_cooldown(model_name, 25.0)
         logger.debug(f"Gemini intent call on {model_name} timed out or failed: {exc}")
     return None
 
@@ -245,16 +246,23 @@ def execute_llm_intent_pipeline(
 ) -> AnalysisResult:
     """
     4-Tier High-Speed Intent Pipeline:
-    - Tier 1: Primary Cloud LLM (Gemini 3.6 Flash) - 3.5s timeout.
-    - Tier 2: Resilient Secondary Cloud LLM (Gemini Flash Latest / OpenAI) - 3.5s timeout.
-    - Tier 3: Ultra-Lite Cloud LLM (Gemini 3.1 Flash Lite) - 2.5s timeout.
-    - Tier 4: Contextual NLU Heuristics Engine (<0.01s instant fallback).
+    - Tier 4 Fast-Path: High-confidence heuristic extraction (<1ms).
+    - Tier 1: Primary Cloud LLM (Gemini 3.6 Flash) - 2.5s timeout.
+    - Tier 2: Resilient Secondary Cloud LLM (Gemini Flash Latest / OpenAI) - 2.5s timeout.
+    - Tier 3: Ultra-Lite Cloud LLM (Gemini 3.1 Flash Lite) - 2.0s timeout.
+    - Tier 4: Contextual NLU Heuristics Engine (<0.01s fallback).
     """
     clean_text = text.strip()
 
+    # Fast-Path: If unambiguous intent with high confidence (>0.85), return in <1ms
+    heuristic = analyze_utterance_rule_based(clean_text, conversation_context)
+    if heuristic.confidence >= 0.85 and not heuristic.is_ambiguous:
+        heuristic.reasoning = f"[Tier 4: Fast-Path NLU Engine] {heuristic.reasoning or ''}"
+        return heuristic
+
     # Tier 1: Primary Cloud LLM
     tier1_model = getattr(settings, "LLM_TIER1_MODEL", "gemini-3.6-flash")
-    tier1_timeout = getattr(settings, "LLM_TIER1_TIMEOUT", 3.5)
+    tier1_timeout = getattr(settings, "LLM_TIER1_TIMEOUT", 2.5)
     t1_result = call_gemini_model_intent(tier1_model, clean_text, conversation_context, timeout=tier1_timeout)
     if t1_result:
         t1_result.reasoning = f"[Tier 1: {tier1_model}] {t1_result.reasoning or 'Intent classified'}"
@@ -333,6 +341,7 @@ def generate_gemini_response_sync(
             elif resp.status_code == 400 and ("API_KEY_INVALID" in resp.text or "API key not valid" in resp.text):
                 _GEMINI_KEY_VALID = False
     except Exception as exc:
+        _set_model_cooldown(model_name, 25.0)
         logger.debug(f"Gemini conversational generation on {model_name} timed out/failed: {exc}")
     return None
 
@@ -442,7 +451,7 @@ def generate_conversational_llm_response(
 
     # 1. Tier 1: Primary Cloud LLM (Gemini 3.6 Flash)
     tier1_model = getattr(settings, "LLM_TIER1_MODEL", "gemini-3.6-flash")
-    tier1_timeout = getattr(settings, "LLM_TIER1_TIMEOUT", 3.5)
+    tier1_timeout = getattr(settings, "LLM_TIER1_TIMEOUT", 2.5)
     reply = generate_gemini_response_sync(tier1_model, system_prompt, user_prompt, timeout=tier1_timeout)
     if reply and len(reply.strip()) > 10:
         if expected_oid is not None and str(expected_oid) not in reply:
@@ -451,7 +460,7 @@ def generate_conversational_llm_response(
 
     # 2. Tier 2: Resilient Secondary Cloud LLM (Gemini Flash Latest or OpenAI)
     tier2_model = getattr(settings, "LLM_TIER2_MODEL", "gemini-flash-latest")
-    tier2_timeout = getattr(settings, "LLM_TIER2_TIMEOUT", 3.5)
+    tier2_timeout = getattr(settings, "LLM_TIER2_TIMEOUT", 2.0)
 
     openai_key = _configured_api_key(settings.OPENAI_API_KEY)
     if openai_key and _OPENAI_KEY_VALID is not False:
@@ -469,7 +478,7 @@ def generate_conversational_llm_response(
 
     # 3. Tier 3: Ultra-Lite Cloud LLM (Gemini 3.1 Flash Lite)
     tier3_model = getattr(settings, "LLM_TIER3_MODEL", "gemini-3.1-flash-lite")
-    tier3_timeout = getattr(settings, "LLM_TIER3_TIMEOUT", 2.5)
+    tier3_timeout = getattr(settings, "LLM_TIER3_TIMEOUT", 1.5)
     reply = generate_gemini_response_sync(tier3_model, system_prompt, user_prompt, timeout=tier3_timeout)
     if reply and len(reply.strip()) > 10:
         if expected_oid is not None and str(expected_oid) not in reply:

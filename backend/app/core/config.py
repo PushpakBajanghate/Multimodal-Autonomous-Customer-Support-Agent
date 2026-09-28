@@ -49,9 +49,9 @@ class Settings(BaseSettings):
     LLM_TIER1_MODEL: str = Field(default="gemini-3.6-flash")
     LLM_TIER2_MODEL: str = Field(default="gemini-flash-latest")
     LLM_TIER3_MODEL: str = Field(default="gemini-3.1-flash-lite")
-    LLM_TIER1_TIMEOUT: float = Field(default=3.5)
-    LLM_TIER2_TIMEOUT: float = Field(default=3.5)
-    LLM_TIER3_TIMEOUT: float = Field(default=2.5)
+    LLM_TIER1_TIMEOUT: float = Field(default=2.5)
+    LLM_TIER2_TIMEOUT: float = Field(default=2.0)
+    LLM_TIER3_TIMEOUT: float = Field(default=1.5)
 
     # Human voice and outbound calling
     VOICE_PROVIDER: str = Field(default="sarvam")  # "sarvam", "elevenlabs", or "browser"
