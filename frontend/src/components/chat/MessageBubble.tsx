@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { ChatMessage } from '../../types/chat';
+import { AuraBrandMark } from './AuraBrandMark';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -48,27 +49,25 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   return (
     <div
-      className={`group flex flex-col max-w-[88%] sm:max-w-[78%] transition-all ${
+      className={`group flex max-w-[92%] flex-col transition-all sm:max-w-[78%] ${
         isUser ? 'ml-auto items-end' : 'mr-auto items-start'
       }`}
     >
       <div className="flex items-end gap-2">
         {/* Agent Avatar */}
         {!isUser && (
-          <div className="w-7 h-7 rounded-full bg-indigo-950 border border-indigo-700/60 flex items-center justify-center text-xs shrink-0 mb-1 shadow-sm">
-            ✨
-          </div>
+          <AuraBrandMark className="aura-message-mark mb-1 shrink-0" />
         )}
 
         <div className="flex flex-col">
           {/* Message Card Bubble */}
           <div
-            className={`relative px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm transition-all duration-200 ${
+            className={`relative rounded-[18px] px-4 py-3 text-[13px] leading-[1.75] shadow-[0_3px_10px_rgba(41,35,78,.045)] transition-all duration-200 sm:px-5 ${
               isUser
                 ? isError
-                  ? 'bg-rose-900/90 text-rose-100 border border-rose-700 rounded-br-xs'
-                  : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-br-xs'
-                : 'bg-slate-800/95 text-slate-100 border border-slate-700/60 rounded-bl-xs'
+                  ? 'aura-bubble-error rounded-br-[5px] border border-rose-200 bg-rose-50 text-rose-800'
+                  : 'aura-bubble-user rounded-br-[5px] bg-gradient-to-br from-[#7663e5] to-[#5e4bc8] text-white shadow-[0_7px_18px_rgba(95,75,200,.17)]'
+                : 'aura-bubble-agent rounded-bl-[5px] border border-[#eeecf3] bg-[#faf9fc] text-[#454157]'
             }`}
           >
             {/* Message Body Content */}
@@ -89,7 +88,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
           {/* Metadata Footer: Timestamp, Status, Action Buttons */}
           <div
-            className={`flex items-center gap-2 mt-1 px-1 text-[11px] text-slate-400 select-none ${
+            className={`mt-1 flex select-none items-center gap-2 px-1 text-[10px] text-[#a29eae] ${
               isUser ? 'justify-end' : 'justify-start'
             }`}
           >
@@ -99,18 +98,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {isUser && (
               <span className="flex items-center">
                 {isSending && (
-                  <svg className="w-3 h-3 text-slate-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <svg className="h-3 w-3 animate-spin text-[#a29eae]" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
                 )}
                 {message.status === 'sent' && (
-                  <svg className="w-3.5 h-3.5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-3.5 w-3.5 text-[#7865d9]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 )}
                 {isError && (
-                  <span className="text-rose-400 font-medium">Failed</span>
+                  <span className="font-medium text-rose-500">Failed</span>
                 )}
               </span>
             )}
@@ -120,7 +119,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               <button
                 type="button"
                 onClick={() => onRetry(message.id)}
-                className="text-xs text-rose-300 hover:text-rose-100 underline ml-1 cursor-pointer font-medium"
+                className="ml-1 cursor-pointer text-xs font-medium text-rose-500 underline hover:text-rose-700"
               >
                 Retry
               </button>
@@ -132,13 +131,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 type="button"
                 onClick={handleSpeak}
                 className={`transition-colors cursor-pointer ml-1 p-0.5 rounded ${
-                  isSpeaking ? 'text-blue-400 font-bold' : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-200'
+                  isSpeaking ? 'font-bold text-[#6e5bd2]' : 'text-[#9d99aa] opacity-0 transition-opacity hover:text-[#6e5bd2] group-hover:opacity-100'
                 }`}
                 title={isSpeaking ? 'Stop audio' : 'Listen to response'}
               >
                 {isSpeaking ? (
-                  <span className="text-[10px] text-blue-400 flex items-center gap-0.5">
-                    🔊 Speaking...
+                  <span className="flex items-center gap-1 text-[10px] text-[#6e5bd2]">
+                    <span aria-hidden="true">◖</span> Speaking...
                   </span>
                 ) : (
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -152,11 +151,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <button
               type="button"
               onClick={handleCopy}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-slate-200 cursor-pointer ml-1"
+              className="ml-1 cursor-pointer text-[#9d99aa] opacity-0 transition-opacity hover:text-[#6e5bd2] group-hover:opacity-100"
               title="Copy text"
             >
               {copied ? (
-                <span className="text-[10px] text-emerald-400 font-sans">Copied!</span>
+                <span className="font-sans text-[10px] text-emerald-600">Copied!</span>
               ) : (
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />

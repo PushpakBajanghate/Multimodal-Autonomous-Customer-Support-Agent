@@ -1,7 +1,7 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
-import { API_BASE, setStoredAuthToken } from '../../services/chatApi';
+import { API_BASE, getStoredAuthToken, setStoredAuthToken } from '../../services/chatApi';
 
 interface VerificationModalProps {
   isOpen: boolean;
@@ -29,10 +29,12 @@ export const VerificationModal: React.FC<VerificationModalProps> = ({
     setSuccessMsg('');
 
     try {
+      const token = getStoredAuthToken();
       const res = await fetch(`${API_BASE}/auth/customer-session/verify`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           order_id: parseInt(orderId, 10),

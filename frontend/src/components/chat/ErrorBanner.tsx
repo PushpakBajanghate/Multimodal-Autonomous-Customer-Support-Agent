@@ -16,23 +16,23 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({
   if (!error) return null;
 
   return (
-    <div className="mx-4 my-2 px-4 py-2.5 rounded-xl bg-rose-950/90 border border-rose-800/80 text-rose-200 text-xs flex items-center justify-between gap-3 shadow-lg animate-fade-in">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <span className="w-5 h-5 rounded-full bg-rose-900 flex items-center justify-center text-rose-300 shrink-0 font-bold">
+    <div className="mx-4 my-2 flex animate-fade-in items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs text-rose-800 shadow-sm">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-100 font-bold text-rose-600">
           !
         </span>
         <div className="truncate">
-          <span className="font-semibold text-rose-100 mr-1.5">Connection Error:</span>
+          <span className="mr-1.5 font-semibold text-rose-800">Connection issue:</span>
           <span>{error}</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex shrink-0 items-center gap-2">
         {onRetry && (
           <button
             type="button"
             onClick={onRetry}
-            className="px-2.5 py-1 rounded bg-rose-800 hover:bg-rose-700 text-white font-medium text-xs transition-colors cursor-pointer"
+            className="cursor-pointer rounded bg-rose-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-rose-700"
           >
             Retry
           </button>
@@ -40,7 +40,7 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({
         <button
           type="button"
           onClick={onDismiss}
-          className="p-1 text-rose-400 hover:text-rose-100 transition-colors cursor-pointer"
+          className="cursor-pointer p-1 text-rose-500 transition-colors hover:text-rose-800"
           aria-label="Dismiss error"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

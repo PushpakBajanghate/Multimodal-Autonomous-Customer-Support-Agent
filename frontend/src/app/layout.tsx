@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aura | Multimodal Autonomous Customer Support Agent",
+  title: "Aura Support | Multimodal Autonomous Customer Support",
   description: "A unified autonomous agent brain exposing text chat and voice support channels.",
 };
 

@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #090d16;
-  --foreground: #f1f5f9;
+  --background: #f7f6fc;
+  --foreground: #25223a;
+}
+
+.aura-connection-pill {
+  white-space: nowrap;
+}
+
+.aura-connection-pill:hover {
+  border-color: rgba(255, 255, 255, .25);
+  background: rgba(255, 255, 255, .08);
 }
 
 @theme inline {
@@ -19,10 +28,20 @@ body {
   overflow-x: hidden;
 }
 
-/* Custom Sleek Scrollbar */
+button,
+textarea,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -30,12 +49,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.35);
+  background: rgba(128, 119, 166, 0.24);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.6);
+  background: rgba(128, 119, 166, 0.42);
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -59,4 +78,483 @@ body {
 
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out forwards;
+}
+
+.aura-app {
+  background:
+    radial-gradient(ellipse at 63% 33%, rgba(91, 46, 208, .34), transparent 43%),
+    radial-gradient(ellipse at 45% 100%, rgba(63, 33, 150, .2), transparent 48%),
+    #100d19;
+  color: #f5f2ff;
+}
+
+.aura-topbar {
+  background: transparent;
+}
+
+.aura-topbar-pill {
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(20, 16, 31, .93);
+  box-shadow: 0 12px 34px rgba(5, 3, 13, .2), inset 0 1px 0 rgba(255, 255, 255, .035);
+  backdrop-filter: blur(20px);
+}
+
+.aura-topbar-link {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  padding: 0 10px;
+  color: #aaa4b8;
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition: color .18s ease, border-color .18s ease, background-color .18s ease;
+}
+
+.aura-topbar-link:hover {
+  border-color: rgba(255, 255, 255, .07);
+  background: rgba(255, 255, 255, .055);
+  color: #f4f0ff;
+}
+
+.aura-topbar-link-active {
+  border-color: rgba(146, 120, 246, .2);
+  background: rgba(116, 81, 227, .16);
+  color: #d2c5ff;
+}
+
+.aura-message-search {
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .035);
+  color: #a49fb2;
+}
+
+.aura-message-search:focus-within {
+  border-color: rgba(163, 139, 255, .45);
+  background: rgba(255, 255, 255, .06);
+}
+
+.aura-message-search input {
+  color: #f0ecf8;
+}
+
+.aura-topbar-pill .aura-mark {
+  width: 34px;
+  height: 34px;
+}
+
+.aura-topbar-pill .aura-mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.aura-session-pill {
+  border-color: rgba(255, 255, 255, .09);
+  color: #b8b1c7;
+  background: rgba(255, 255, 255, .035);
+}
+
+.aura-session-pill:hover {
+  border-color: rgba(163, 139, 255, .4);
+  background: rgba(255, 255, 255, .075);
+  color: white;
+}
+
+.aura-topbar-new-chat {
+  background: linear-gradient(110deg, #7252ed, #5833cc);
+}
+
+.aura-topbar-new-chat:hover {
+  background: linear-gradient(110deg, #8165f4, #6545dc);
+}
+
+.aura-content {
+  background:
+    radial-gradient(ellipse at 48% 13%, rgba(98, 50, 207, .34), transparent 48%),
+    linear-gradient(180deg, #171126, #100d19 72%);
+}
+
+.aura-chat,
+.aura-message-list {
+  background: transparent !important;
+}
+
+.aura-welcome {
+  border-color: rgba(186, 163, 255, .2);
+  background:
+    radial-gradient(ellipse at 83% 10%, rgba(131, 78, 246, .34), transparent 46%),
+    linear-gradient(135deg, rgba(37, 26, 68, .96), rgba(24, 19, 43, .98) 65%);
+  box-shadow: 0 18px 55px rgba(3, 1, 12, .18), inset 0 1px 0 rgba(255, 255, 255, .055);
+}
+
+.aura-welcome > div:first-child > div:first-child {
+  background: rgba(132, 96, 255, .2);
+  filter: blur(38px);
+}
+
+.aura-welcome-label {
+  color: #a995ff;
+}
+
+.aura-welcome-title {
+  color: #fbfaff;
+}
+
+.aura-welcome-description {
+  color: #aaa3bd;
+}
+
+.aura-welcome-tile {
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .045);
+  box-shadow: none;
+}
+
+.aura-welcome-tile:hover {
+  border-color: rgba(176, 153, 255, .44);
+  background: rgba(139, 104, 255, .1);
+  box-shadow: 0 8px 20px rgba(8, 4, 22, .22);
+}
+
+.aura-welcome-icon {
+  color: #c5b5ff;
+  background: rgba(130, 100, 240, .2);
+}
+
+.aura-welcome-tile-label span:first-child {
+  color: #e8e3f2;
+}
+
+.aura-welcome-tile-label span:last-child {
+  color: #928ca3;
+}
+
+.aura-bubble-agent {
+  border-color: rgba(255, 255, 255, .08);
+  background: rgba(30, 26, 43, .96);
+  color: #e6e1ef;
+  box-shadow: 0 5px 18px rgba(3, 2, 9, .13);
+}
+
+.aura-bubble-user {
+  background: linear-gradient(135deg, #7959ed, #5837c9);
+  box-shadow: 0 8px 22px rgba(67, 36, 164, .25);
+}
+
+.aura-composer {
+  border-color: rgba(255, 255, 255, .07);
+  background: rgba(17, 14, 26, .97);
+}
+
+.aura-composer-box {
+  border-color: rgba(255, 255, 255, .12);
+  background: rgba(31, 27, 43, .94);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .025);
+}
+
+.aura-composer-box:focus-within {
+  border-color: rgba(157, 132, 255, .62);
+  --tw-ring-color: rgba(129, 99, 234, .17);
+}
+
+.aura-composer-box textarea {
+  color: #f0ecf8;
+}
+
+.aura-composer-box textarea::placeholder {
+  color: #827c90;
+}
+
+.aura-composer-box button:first-child {
+  color: #c5b6ff;
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .055);
+}
+
+.aura-composer > div:last-child {
+  color: #767083;
+}
+
+.aura-prompts {
+  border-color: rgba(255, 255, 255, .065);
+  background: rgba(17, 14, 26, .97);
+}
+
+.aura-prompts > span {
+  color: #817b91;
+}
+
+.aura-prompts button {
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .035);
+  color: #b0aabe;
+}
+
+.aura-prompts button:hover {
+  border-color: rgba(164, 137, 255, .42);
+  background: rgba(117, 82, 222, .17);
+  color: #d9ceff;
+}
+
+.aura-message-list > div:first-child > div:not(.aura-welcome) {
+  color: #a49fb2;
+}
+
+.aura-message-list > button {
+  border-color: rgba(255, 255, 255, .12);
+  background: rgba(35, 29, 52, .95);
+  color: #ded6f3;
+}
+
+@media (max-width: 767px) {
+  .aura-app {
+    background: #100d19;
+  }
+
+  .aura-topbar {
+    padding: 10px;
+  }
+
+  .aura-topbar-pill {
+    flex-wrap: wrap;
+    gap: 8px;
+    border-radius: 17px;
+    padding: 9px 11px;
+  }
+
+  .aura-topbar-brand {
+    flex: 1 1 auto;
+  }
+
+  .aura-topbar-tools {
+    order: 3;
+    flex: 1 0 100%;
+    flex-wrap: wrap;
+  }
+
+  .aura-topbar-nav {
+    order: 0;
+    width: 100%;
+    justify-content: space-between;
+    overflow-x: auto;
+  }
+
+  .aura-message-search {
+    order: 1;
+    display: flex;
+    width: 100%;
+  }
+
+  .aura-topbar-link {
+    min-height: 34px;
+    gap: 5px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  .aura-topbar-actions {
+    margin-left: auto;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1150px) {
+  .aura-topbar-pill {
+    gap: 7px;
+    padding-right: 10px;
+    padding-left: 12px;
+  }
+
+  .aura-topbar-link {
+    gap: 5px;
+    padding-right: 7px;
+    padding-left: 7px;
+    font-size: 10px;
+  }
+
+  .aura-message-search {
+    width: 145px;
+  }
+
+  .aura-topbar-link span {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 850px) {
+  .aura-topbar-actions .aura-session-pill {
+    display: none;
+  }
+
+  .aura-topbar-new-chat span {
+    display: none;
+  }
+}
+
+@media (max-width: 440px) {
+  .aura-topbar-tools {
+    order: 3;
+    flex: 1 0 100%;
+    justify-content: space-between;
+  }
+
+  .aura-message-search {
+    display: flex;
+    width: 100%;
+  }
+
+  .aura-topbar-link {
+    flex-direction: column;
+    gap: 2px;
+    padding: 3px 7px;
+    font-size: 9px;
+  }
+
+  .aura-topbar-link svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .aura-topbar-actions .aura-session-pill {
+    display: none;
+  }
+
+  .aura-connection-pill {
+    width: 34px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .aura-connection-label {
+    display: none;
+  }
+}
+
+.aura-mark {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: white;
+  background: linear-gradient(145deg, #8978f2, #5945cb 72%);
+  box-shadow: 0 5px 14px rgba(104, 84, 217, .26), inset 0 1px 0 rgba(255, 255, 255, .28);
+}
+
+.aura-mark svg {
+  width: 23px;
+  height: 23px;
+}
+
+.aura-mark-small {
+  width: 29px;
+  height: 29px;
+  border-radius: 10px;
+}
+
+.aura-mark-small svg {
+  width: 19px;
+  height: 19px;
+}
+
+.aura-mark.aura-message-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+
+.aura-mark.aura-message-mark svg {
+  width: 19px;
+  height: 19px;
+}
+
+.aura-mark.aura-welcome-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 15px;
+}
+
+.aura-mark.aura-welcome-mark svg {
+  width: 29px;
+  height: 29px;
+}
+
+.aura-nav-item {
+  display: flex;
+  width: 100%;
+  height: 40px;
+  align-items: center;
+  gap: 11px;
+  border-radius: 11px;
+  padding: 0 11px;
+  color: #777388;
+  font-size: 12px;
+  font-weight: 550;
+  text-align: left;
+  transition: color .18s ease, background-color .18s ease, transform .18s ease;
+}
+
+.aura-nav-item:hover {
+  color: #514975;
+  background: #f7f5fe;
+}
+
+.aura-nav-active {
+  color: #604dce;
+  background: #f1efff;
+}
+
+.aura-nav-active:hover {
+  color: #604dce;
+  background: #eeebff;
+}
+
+.aura-nav-dot {
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: #7a66e4;
+}
+
+@media (max-width: 767px) {
+  .aura-app {
+    overflow: auto;
+  }
+
+  .aura-topbar-tools {
+    order: 3;
+    flex: 1 0 100%;
+    justify-content: space-between;
+  }
+
+  .aura-topbar-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+}
+
+.aura-nav-item,
+.aura-nav-item:hover {
+  color: #a49fb2;
+}
+
+.aura-nav-item:hover {
+  background: rgba(255, 255, 255, .055);
+}
+
+.aura-nav-active,
+.aura-nav-active:hover {
+  color: #c6baff;
+  background: rgba(112, 82, 228, .2);
+}
+
+.aura-nav-dot {
+  background: #9d84ff;
+  box-shadow: 0 0 9px rgba(157, 132, 255, .8);
 }

@@ -20,9 +20,9 @@ export const QuickPrompts: React.FC<QuickPromptsProps> = ({
   disabled = false
 }) => {
   return (
-    <div className="px-4 py-2 bg-slate-900/60 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-      <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-500 shrink-0 select-none mr-1">
-        Quick Inquiries:
+    <div className="aura-prompts flex items-center gap-2 overflow-x-auto border-t border-[#f2f0f6] bg-white px-4 py-2.5 no-scrollbar sm:px-8">
+      <span className="mr-1 shrink-0 select-none text-[10px] font-semibold uppercase tracking-[.12em] text-[#a19daf]">
+        Quick actions
       </span>
       <div className="flex items-center gap-1.5">
         {PROMPTS.map((p, idx) => (
@@ -31,7 +31,7 @@ export const QuickPrompts: React.FC<QuickPromptsProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => onSelectPrompt(p.text)}
-            className="shrink-0 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800/90 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white border border-slate-700/50 hover:border-slate-600 transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+            className="shrink-0 cursor-pointer rounded-full border border-[#ece9f3] bg-[#fcfbfe] px-3 py-1.5 text-[10px] font-medium text-[#777388] transition-all hover:border-[#d9d2f5] hover:bg-[#f7f5ff] hover:text-[#5b4ac0] active:bg-[#f1efff] disabled:pointer-events-none disabled:opacity-40 sm:text-[11px]"
           >
             {p.label}
           </button>
