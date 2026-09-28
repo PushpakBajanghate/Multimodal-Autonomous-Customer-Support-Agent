@@ -37,13 +37,21 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24)  # 24 hours
     AGENT_SERVICE_SECRET: str = Field(default="agent_internal_service_secret_key_2026")
 
-    # LLM Agent Configuration
+    # LLM Agent Configuration & 4-Tier Resilience
     LLM_PROVIDER: str = Field(default="gemini")  # "gemini", "openai", or "mock"
     OPENAI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
     OPENAI_MODEL: str = Field(default="gpt-4o-mini")
     GEMINI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-    GEMINI_MODEL: str = Field(default="gemini-2.5-flash")
+    GEMINI_MODEL: str = Field(default="gemini-3.6-flash")
     LLM_TEMPERATURE: float = Field(default=0.2)
+
+    # 4-Tier LLM Architecture Configuration (Ultra-Fast Response & High Resilience)
+    LLM_TIER1_MODEL: str = Field(default="gemini-3.6-flash")
+    LLM_TIER2_MODEL: str = Field(default="gemini-flash-latest")
+    LLM_TIER3_MODEL: str = Field(default="gemini-3.1-flash-lite")
+    LLM_TIER1_TIMEOUT: float = Field(default=3.5)
+    LLM_TIER2_TIMEOUT: float = Field(default=3.5)
+    LLM_TIER3_TIMEOUT: float = Field(default=2.5)
 
     # Human voice and outbound calling
     VOICE_PROVIDER: str = Field(default="sarvam")  # "sarvam", "elevenlabs", or "browser"
