@@ -42,16 +42,16 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
     OPENAI_MODEL: str = Field(default="gpt-4o-mini")
     GEMINI_API_KEY: str | None = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-    GEMINI_MODEL: str = Field(default="gemini-3.6-flash")
-    LLM_TEMPERATURE: float = Field(default=0.2)
+    GEMINI_MODEL: str = Field(default="gemini-3.5-flash-lite")
+    LLM_TEMPERATURE: float = Field(default=0.7)
 
     # 4-Tier LLM Architecture Configuration (Ultra-Fast Response & High Resilience)
-    LLM_TIER1_MODEL: str = Field(default="gemini-3.6-flash")
-    LLM_TIER2_MODEL: str = Field(default="gemini-flash-latest")
-    LLM_TIER3_MODEL: str = Field(default="gemini-3.1-flash-lite")
-    LLM_TIER1_TIMEOUT: float = Field(default=2.5)
-    LLM_TIER2_TIMEOUT: float = Field(default=2.0)
-    LLM_TIER3_TIMEOUT: float = Field(default=1.5)
+    LLM_TIER1_MODEL: str = Field(default="gemini-3.5-flash-lite")
+    LLM_TIER2_MODEL: str = Field(default="gemini-3.1-flash-lite")
+    LLM_TIER3_MODEL: str = Field(default="gemini-3.6-flash")
+    LLM_TIER1_TIMEOUT: float = Field(default=5.0)
+    LLM_TIER2_TIMEOUT: float = Field(default=4.0)
+    LLM_TIER3_TIMEOUT: float = Field(default=3.5)
 
     # Human voice and outbound calling
     VOICE_PROVIDER: str = Field(default="sarvam")  # "sarvam", "elevenlabs", or "browser"
