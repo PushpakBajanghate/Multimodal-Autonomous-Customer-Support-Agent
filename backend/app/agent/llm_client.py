@@ -584,11 +584,17 @@ def generate_intelligent_offline_response(
 
     # 7. Outbound Call Request
     elif intent == IntentType.OUTBOUND_CALL_REQUEST:
-        if tool_results and tool_results.get("phone_number"):
+        if tool_results and tool_results.get("success") and tool_results.get("phone_number"):
             p = tool_results.get("phone_number")
             return (
                 f"{greeting}I am initiating an outbound AI voice call to your number ({p}) right now! "
                 f"Please answer your phone when it rings to speak with our AI agent."
+            )
+        elif tool_results and tool_results.get("status") in {"not_configured", "call_failed"}:
+            reason = tool_results.get("error") or "Outbound calling is not configured."
+            return (
+                f"{greeting}I could not place the outbound phone call yet. "
+                f"{reason}. Please configure Twilio credentials and a public HTTPS callback URL, then try again."
             )
         else:
             return (
