@@ -61,25 +61,39 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
     new_address: Optional[str] = None
     relevant_dates: List[str] = []
 
+    # Check if utterance contains a negated order ID e.g. "not #34", "not order 34", "is not #34", "nahi hai 34"
+    negated_match = re.search(
+        r'\b(?:not|is not|isn\'t|no|wrong|nahi hai|galat|nhi)\s*(?:#|order\s*(?:id|#|no\.?|number)?)?\s*[:#-]?\s*(\d+)',
+        text,
+        re.IGNORECASE
+    ) or re.search(
+        r'\b(?:order|#)?\s*(\d+)\s*(?:nahi hai|is not|galat)\b',
+        text,
+        re.IGNORECASE
+    )
+    negated_id = int(negated_match.group(1)) if negated_match else None
+
     # 1. Extract Order ID
     for pat in ORDER_ID_PATTERNS:
         match = pat.search(text)
         if match:
             try:
-                order_id = int(match.group(1))
-                scores["order_id"] = 0.98
-                break
+                cand_id = int(match.group(1))
+                if cand_id != negated_id:
+                    order_id = cand_id
+                    scores["order_id"] = 0.98
+                    break
             except (ValueError, IndexError):
                 pass
 
     # Fallback: if no order pattern matched, but there is an isolated 1-5 digit number in short query
     if order_id is None:
-        standalone_num = re.search(r'\b(\d{1,5})\b', text)
-        if standalone_num:
-            num_val = int(standalone_num.group(1))
-            if num_val > 0 and len(standalone_num.group(1)) <= 5:
+        for standalone_match in re.finditer(r'\b(\d{1,5})\b', text):
+            num_val = int(standalone_match.group(1))
+            if num_val != negated_id and num_val > 0 and len(standalone_match.group(1)) <= 5:
                 order_id = num_val
                 scores["order_id"] = 0.80
+                break
 
     # 2. Extract Email
     email_match = EMAIL_REGEX.search(text)
@@ -282,13 +296,21 @@ def analyze_utterance_rule_based(
     greeting_prefix = f"Hello {user_name}! " if user_name else "Hello! "
 
     # Check conversation context if order_id was previously identified
-    if entities.order_id is None and conversation_context:
-        for msg in reversed(conversation_context):
-            ctx_entities = extract_entities_rule_based(msg.get("text", ""))
-            if ctx_entities.order_id is not None:
-                entities.order_id = ctx_entities.order_id
-                entities.confidence_scores["order_id"] = 0.85
-                break
+    # Do not inherit an order_id if user is negating/correcting, or if previous message indicated order not found
+    is_negating_order = bool(re.search(r'\b(?:not|is not|isn\'t|no|wrong|nahi hai|galat|different|nhi)\s*(?:#|order|id)?\s*(\d+)?', text, re.IGNORECASE))
+    if entities.order_id is None and not is_negating_order and conversation_context:
+        # Check if the agent recently said the order was not found
+        recently_failed = any(
+            msg.get("sender") == "agent" and re.search(r'\b(?:not found|unable to find|nahi mila|invalid order)\b', msg.get("text", ""), re.IGNORECASE)
+            for msg in reversed(conversation_context[-2:])
+        )
+        if not recently_failed:
+            for msg in reversed(conversation_context):
+                ctx_entities = extract_entities_rule_based(msg.get("text", ""))
+                if ctx_entities.order_id is not None:
+                    entities.order_id = ctx_entities.order_id
+                    entities.confidence_scores["order_id"] = 0.85
+                    break
 
     # Ambiguity detection
     is_ambiguous = False

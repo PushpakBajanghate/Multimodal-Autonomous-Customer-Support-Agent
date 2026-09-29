@@ -84,14 +84,14 @@ def generate_agent_response(
 
     intent = analysis.intent
     entities = analysis.entities
-    resolved_customer_id = customer_id or entities.customer_id or 1
+    resolved_customer_id = customer_id or entities.customer_id
     preferred_language = detect_voice_language(message, "auto")
 
     # 2. Identify customer profile and active orders from DB
     customer_name = entities.customer_name
     if not customer_name and conversation_history:
         from app.agent.heuristics import _extract_customer_name
-        for hist_msg in conversation_history:
+        for hist_msg in reversed(conversation_history):
             if hist_msg.get("sender") == "user":
                 detected_name = _extract_customer_name(hist_msg.get("text", ""))
                 if detected_name:
@@ -100,24 +100,25 @@ def generate_agent_response(
 
     customer_orders_data: List[Dict[str, Any]] = []
 
-    try:
-        db_customer = db.query(Customer).filter(Customer.id == resolved_customer_id).first()
-        if db_customer:
-            if not customer_name:
-                customer_name = db_customer.name.split()[0] if db_customer.name else None
+    if resolved_customer_id is not None:
+        try:
+            db_customer = db.query(Customer).filter(Customer.id == resolved_customer_id).first()
+            if db_customer:
+                if not customer_name:
+                    customer_name = db_customer.name.split()[0] if db_customer.name else None
 
-            db_orders = db.query(Order).filter(Order.customer_id == db_customer.id).order_by(Order.order_date.desc()).all()
-            for o in db_orders:
-                exp_str = o.expected_delivery.strftime("%B %d, %Y") if o.expected_delivery else "Pending"
-                customer_orders_data.append({
-                    "id": o.id,
-                    "status": o.status,
-                    "total_amount": float(o.total_amount) if o.total_amount else 0.0,
-                    "expected_delivery_str": exp_str,
-                    "is_editable": o.is_editable
-                })
-    except Exception:
-        pass
+                db_orders = db.query(Order).filter(Order.customer_id == db_customer.id).order_by(Order.order_date.desc()).all()
+                for o in db_orders:
+                    exp_str = o.expected_delivery.strftime("%B %d, %Y") if o.expected_delivery else "Pending"
+                    customer_orders_data.append({
+                        "id": o.id,
+                        "status": o.status,
+                        "total_amount": float(o.total_amount) if o.total_amount else 0.0,
+                        "expected_delivery_str": exp_str,
+                        "is_editable": o.is_editable
+                    })
+        except Exception:
+            pass
 
     if intent == IntentType.UNKNOWN and _is_plain_greeting(message):
         if preferred_language.startswith("hi"):
