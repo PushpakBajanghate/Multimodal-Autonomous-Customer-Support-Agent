@@ -38,12 +38,8 @@ def create_customer_session(
         customer = db.query(Customer).filter(Customer.email == payload.email).first()
     else:
         # Default / guest customer session initialization for seamless chat
-        customer = db.query(Customer).first()
-        if not customer:
-            customer = Customer(name="Guest User", email="guest@example.com")
-            db.add(customer)
-            db.commit()
-            db.refresh(customer)
+        # Return an anonymous customer ID 0 to prevent impersonating Customer 1 (Alice)
+        customer = Customer(id=0, name="Guest", email="")
 
     if not customer:
         raise HTTPException(
