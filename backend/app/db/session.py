@@ -81,8 +81,8 @@ def init_db():
             c1 = Customer(
                 name="Pushpak Bajanghate", email="pushpakbajanghate09@gmail.com"
             )
-            c2 = Customer(name="Pushkar Sawarkar", email="pushkarsawarkar22.com")
-            c3 = Customer(name="Charlie Brown", email="charlie.brown@example.com")
+            c2 = Customer(name="Pushkar Sawarkar", email="pushkarsawarkar22@gmail.com")
+            c3 = Customer(name="Ashlesha Varghane", email="ashleshavarghane@gmail.com")
             db.add_all([c1, c2, c3])
             db.commit()
             db.refresh(c1)
@@ -94,7 +94,7 @@ def init_db():
                     status="placed",
                     order_date=now - timedelta(days=2),
                     expected_delivery=now + timedelta(days=3),
-                    total_amount=129.99,
+                    total_amount=2999.00,
                     is_editable=True,
                 ),
                 Order(
@@ -102,7 +102,7 @@ def init_db():
                     status="delivered",
                     order_date=now - timedelta(days=5),
                     expected_delivery=now - timedelta(days=2),
-                    total_amount=89.99,
+                    total_amount=1499.00,
                     is_editable=False,
                 ),
                 Order(
@@ -110,7 +110,7 @@ def init_db():
                     status="shipped",
                     order_date=now - timedelta(days=3),
                     expected_delivery=now + timedelta(days=2),
-                    total_amount=249.99,
+                    total_amount=10999.00,
                     is_editable=False,
                 ),
                 Order(
@@ -118,7 +118,7 @@ def init_db():
                     status="placed",
                     order_date=now - timedelta(days=1),
                     expected_delivery=now + timedelta(days=4),
-                    total_amount=59.99,
+                    total_amount=1299.00,
                     is_editable=True,
                 ),
                 Order(
@@ -126,17 +126,25 @@ def init_db():
                     status="delivered",
                     order_date=now - timedelta(days=8),
                     expected_delivery=now - timedelta(days=4),
-                    total_amount=99.99,
+                    total_amount=2499.00,
                     is_editable=False,
                 ),
             ]
             db.add_all(orders)
             db.commit()
-            for o in orders:
+
+            product_names = [
+                "Noise ColorFit Pro 4 Smartwatch",
+                "boAt Rockerz 450 Bluetooth Headphones",
+                "Redmi 12 5G (128GB, Moonstone Silver)",
+                "Wildcraft 44L Laptop Backpack",
+                "Puma Men's Running Shoes",
+            ]
+            for idx, o in enumerate(orders):
                 db.add(
                     OrderItem(
                         order_id=o.id,
-                        product_name="Premium Product Item",
+                        product_name=product_names[idx % len(product_names)],
                         quantity=1,
                         price=o.total_amount,
                     )
