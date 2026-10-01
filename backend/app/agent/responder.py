@@ -100,10 +100,28 @@ def generate_agent_response(
 
     customer_orders_data: List[Dict[str, Any]] = []
 
-    if resolved_customer_id is not None:
+    if not resolved_customer_id or resolved_customer_id == 0:
+        try:
+            if entities.email:
+                matched_cust = db.query(Customer).filter(Customer.email.ilike(entities.email)).first()
+                if matched_cust:
+                    resolved_customer_id = matched_cust.id
+            elif customer_name:
+                matched_cust = db.query(Customer).filter(Customer.name.ilike(f"%{customer_name}%")).first()
+                if matched_cust:
+                    resolved_customer_id = matched_cust.id
+        except Exception:
+            pass
+
+    customer_full_name = None
+    customer_email_address = None
+
+    if resolved_customer_id and resolved_customer_id > 0:
         try:
             db_customer = db.query(Customer).filter(Customer.id == resolved_customer_id).first()
             if db_customer:
+                customer_full_name = db_customer.name
+                customer_email_address = db_customer.email
                 if not customer_name:
                     customer_name = db_customer.name.split()[0] if db_customer.name else None
 
@@ -140,13 +158,33 @@ def generate_agent_response(
     tool_results: Optional[Dict[str, Any]] = None
 
     # 3. Dispatch to Domain Logic based on Intent if parameters are present
-    if intent == IntentType.ORDER_TRACKING and target_order_id is not None:
+    if intent == IntentType.ACCOUNT_INFO:
+        if resolved_customer_id and customer_full_name:
+            tool_results = {
+                "success": True,
+                "status": "success",
+                "account": {
+                    "customer_id": resolved_customer_id,
+                    "name": customer_full_name,
+                    "email": customer_email_address,
+                    "active_orders_count": len(customer_orders_data)
+                }
+            }
+        else:
+            tool_results = {
+                "success": False,
+                "status": "error",
+                "error": "I couldn't find your account information. Please provide your customer ID, email, or full name."
+            }
+
+    elif intent == IntentType.ORDER_TRACKING and target_order_id is not None:
         success, error, tracking = get_order_tracking(db, target_order_id)
         if success and tracking:
             exp_date = tracking["expected_delivery"].strftime("%B %d, %Y") if tracking.get("expected_delivery") else "Pending"
             tool_results = {
                 "success": True,
                 "status": "success",
+                "customer_name": customer_full_name or customer_name,
                 "tracking": {
                     "order_id": target_order_id,
                     "status": tracking.get("status"),
@@ -171,6 +209,7 @@ def generate_agent_response(
             tool_results = {
                 "success": True,
                 "status": "success",
+                "customer_name": customer_full_name or customer_name,
                 "refund": {
                     "order_id": target_order_id,
                     "amount": float(refund.amount),
@@ -192,6 +231,7 @@ def generate_agent_response(
             tool_results = {
                 "success": True,
                 "status": "success",
+                "customer_name": customer_full_name or customer_name,
                 "order_id": target_order_id,
                 "status_result": cancellation.status
             }
@@ -200,6 +240,40 @@ def generate_agent_response(
                 "success": False,
                 "status": "error",
                 "error": error or f"Unable to cancel Order #{target_order_id}."
+            }
+
+    elif intent == IntentType.DELIVERY_RESCHEDULE and target_order_id is not None and entities.relevant_dates:
+        from app.services.order_service import get_order_by_id
+        from dateutil import parser
+        from datetime import timezone
+        
+        success, error, order = get_order_by_id(db, target_order_id)
+        if success and order:
+            try:
+                new_date = parser.parse(entities.relevant_dates[0])
+                if new_date.tzinfo is None:
+                    new_date = new_date.replace(tzinfo=timezone.utc)
+                
+                order.expected_delivery = new_date
+                db.commit()
+                
+                tool_results = {
+                    "success": True,
+                    "status": "success",
+                    "order_id": target_order_id,
+                    "new_delivery_date_str": new_date.strftime("%B %d, %Y")
+                }
+            except Exception as e:
+                tool_results = {
+                    "success": False,
+                    "status": "error",
+                    "error": "Could not parse the requested delivery date."
+                }
+        else:
+            tool_results = {
+                "success": False,
+                "status": "error",
+                "error": error or f"Unable to reschedule delivery for Order #{target_order_id}."
             }
 
     elif intent == IntentType.ADDRESS_UPDATE and entities.new_address:

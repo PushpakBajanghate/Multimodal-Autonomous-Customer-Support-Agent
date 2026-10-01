@@ -34,14 +34,14 @@ COMMON_DATE_WORDS = [
 def _extract_customer_name(text: str) -> Optional[str]:
     """Helper to detect customer name from introductory phrases."""
     name_patterns = [
-        r'(?:i am|my name is|this is|i\'m|myself)\s+([A-Za-z]+)',
-        r'(?:hi|hello|hey)\s+(?:i am|i\'m|this is)?\s*([A-Za-z]+)\s+(?:here|i need|i want|and|please)',
-        r'(?:naam\s+hai\s+|naam\s+mera\s+)([A-Za-z]+)'
+        r'(?:i am|my name is|this is|i\'m|myself)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+        r'(?:hi|hello|hey)\s+(?:i am|i\'m|this is)?\s*([A-Za-z]+(?:\s+[A-Za-z]+)?)\s+(?:here|i need|i want|and|please)',
+        r'(?:naam\s+hai\s+|naam\s+mera\s+)([A-Za-z]+(?:\s+[A-Za-z]+)?)'
     ]
     for pat in name_patterns:
         match = re.search(pat, text, re.IGNORECASE)
         if match:
-            candidate = match.group(1).strip().capitalize()
+            candidate = match.group(1).strip().title()
             if candidate.lower() not in [
                 "here", "looking", "trying", "wondering", "just", "calling", "writing",
                 "a", "an", "the", "user", "customer", "support", "agent", "need", "want", "have", "hi", "hello"
@@ -94,6 +94,17 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
                 order_id = num_val
                 scores["order_id"] = 0.80
                 break
+
+    # 1.5 Extract Customer ID
+    customer_id = None
+    cust_id_match = re.search(r'\b(?:customer\s*id\s*(?:is)?\s*[:#-]?\s*|id\s+is\s+|my\s+id\s+is\s+)(\d+)', text, re.IGNORECASE)
+    if cust_id_match:
+        customer_id = int(cust_id_match.group(1))
+        scores["customer_id"] = 0.95
+        # Prevent it from being captured as an order id by fallback
+        if order_id == customer_id:
+            order_id = None
+            scores.pop("order_id", None)
 
     # 2. Extract Email
     email_match = EMAIL_REGEX.search(text)
@@ -164,6 +175,7 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
 
     return ExtractedEntities(
         order_id=order_id,
+        customer_id=customer_id,
         customer_name=customer_name,
         email=email,
         phone=phone,
@@ -257,7 +269,17 @@ def classify_intent_rule_based(
     if any(kw in t for kw in call_keywords) or call_regex.search(t):
         return IntentType.OUTBOUND_CALL_REQUEST, 0.96, "Detected outbound phone call request intent."
 
-    # 7. Ticket Creation / Human Escalation
+    # 7. Account Info
+    account_keywords = ["my name", "my email", "my account", "my details", "who am i", "account info", "mera naam", "mera account", "profile details"]
+    if any(kw in t for kw in account_keywords):
+        return IntentType.ACCOUNT_INFO, 0.95, "Detected account information request."
+
+    # 8. Delivery Reschedule
+    reschedule_keywords = ["reschedule", "change delivery", "deliver on", "postpone", "delay delivery"]
+    if any(kw in t for kw in reschedule_keywords) or re.search(r'\bdelivery\b.*?\b(?:change|update|date)\b', t):
+        return IntentType.DELIVERY_RESCHEDULE, 0.95, "Detected delivery reschedule request."
+
+    # 9. Ticket Creation / Human Escalation
     ticket_keywords = [
         "create ticket", "open ticket", "support ticket", "human agent", "talk to human",
         "customer care executive", "representative", "complaint", "shikayat",
@@ -343,6 +365,22 @@ def analyze_utterance_rule_based(
                 clarification_prompt = f"{greeting_prefix}Which Order ID would you like to update the shipping address for?"
             else:
                 clarification_prompt = f"{greeting_prefix}Please provide the complete new destination address for your order."
+
+    elif intent == IntentType.DELIVERY_RESCHEDULE:
+        if entities.order_id is None:
+            is_ambiguous = True
+            missing_entities.append("order_id")
+        if not entities.relevant_dates:
+            is_ambiguous = True
+            missing_entities.append("relevant_dates")
+        
+        if is_ambiguous:
+            if "order_id" in missing_entities and "relevant_dates" in missing_entities:
+                clarification_prompt = f"{greeting_prefix}Please provide your Order ID and the new date you'd like your delivery rescheduled to."
+            elif "order_id" in missing_entities:
+                clarification_prompt = f"{greeting_prefix}Which Order ID would you like to reschedule the delivery for?"
+            else:
+                clarification_prompt = f"{greeting_prefix}What date would you like to reschedule the delivery to?"
 
     elif intent == IntentType.PASSWORD_RESET:
         if entities.email is None:
