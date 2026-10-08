@@ -44,7 +44,7 @@ def _hindi_greeting(customer_name: Optional[str] = None) -> str:
 def _hindi_clarification(intent: IntentType, missing_entities: List[str], customer_name: Optional[str] = None) -> Optional[str]:
     prefix = f"Namaste {customer_name}! " if customer_name else "Namaste! "
     if intent == IntentType.ORDER_TRACKING and "order_id" in missing_entities:
-        return f"{prefix}Main aapke order ka live status check kar sakti hoon. Kripya apna Order ID bhejiye, jaise Order #1."
+        return f"{prefix}Main aapke order ka live status check kar sakti hoon. Kripya apna Order ID bhejiye, ya apna naam/email batayiye."
     if intent == IntentType.ORDER_CANCELLATION and "order_id" in missing_entities:
         return f"{prefix}Kripya batayiye kaunsa Order ID cancel karna hai."
     if intent == IntentType.REFUND_REQUEST and "order_id" in missing_entities:
@@ -100,18 +100,41 @@ def generate_agent_response(
 
     customer_orders_data: List[Dict[str, Any]] = []
 
-    if not resolved_customer_id or resolved_customer_id == 0:
-        try:
-            if entities.email:
-                matched_cust = db.query(Customer).filter(Customer.email.ilike(entities.email)).first()
-                if matched_cust:
-                    resolved_customer_id = matched_cust.id
-            elif customer_name:
-                matched_cust = db.query(Customer).filter(Customer.name.ilike(f"%{customer_name}%")).first()
-                if matched_cust:
-                    resolved_customer_id = matched_cust.id
-        except Exception:
-            pass
+    try:
+        if entities.customer_id and entities.customer_id > 0:
+            resolved_customer_id = entities.customer_id
+        elif entities.email:
+            matched_cust = db.query(Customer).filter(Customer.email.ilike(entities.email)).first()
+            if matched_cust:
+                resolved_customer_id = matched_cust.id
+        elif customer_name:
+            # Try exact match first
+            matched_cust = db.query(Customer).filter(Customer.name.ilike(f"%{customer_name}%")).first()
+            if not matched_cust:
+                # Fuzzy: try matching each word of the name independently
+                name_words = customer_name.strip().split()
+                if len(name_words) >= 2:
+                    # Try first name + fuzzy last name (handles Agrawal vs Agarwal)
+                    first_name = name_words[0]
+                    candidates = db.query(Customer).filter(Customer.name.ilike(f"{first_name}%")).all()
+                    if len(candidates) == 1:
+                        matched_cust = candidates[0]
+                    elif len(candidates) > 1:
+                        # Pick the best match by checking if last name starts similarly
+                        last_typed = name_words[-1].lower()
+                        for c in candidates:
+                            c_parts = c.name.split()
+                            if len(c_parts) >= 2 and c_parts[-1].lower()[:3] == last_typed[:3]:
+                                matched_cust = c
+                                break
+                        if not matched_cust:
+                            matched_cust = candidates[0]
+                elif len(name_words) == 1:
+                    matched_cust = db.query(Customer).filter(Customer.name.ilike(f"{name_words[0]}%")).first()
+            if matched_cust:
+                resolved_customer_id = matched_cust.id
+    except Exception:
+        pass
 
     customer_full_name = None
     customer_email_address = None
@@ -150,10 +173,18 @@ def generate_agent_response(
         if hindi_prompt:
             analysis.clarification_prompt = hindi_prompt
 
-    # If order_id not in entities but customer has exactly 1 active order, we can relate it
+    # If order_id not in entities but customer has active orders, we can relate it
     target_order_id = entities.order_id
-    if target_order_id is None and len(customer_orders_data) == 1 and intent in (IntentType.ORDER_TRACKING, IntentType.REFUND_REQUEST, IntentType.ORDER_CANCELLATION):
-        target_order_id = customer_orders_data[0]["id"]
+    if target_order_id is None and intent in (IntentType.ORDER_TRACKING, IntentType.REFUND_REQUEST, IntentType.ORDER_CANCELLATION, IntentType.DELIVERY_RESCHEDULE):
+        if len(customer_orders_data) == 1:
+            target_order_id = customer_orders_data[0]["id"]
+        
+        # Clear the ambiguity since we successfully inferred the order ID or we have a list of orders to show
+        if len(customer_orders_data) >= 1:
+            if "order_id" in analysis.missing_entities:
+                analysis.missing_entities.remove("order_id")
+                if not analysis.missing_entities:
+                    analysis.clarification_prompt = None
 
     tool_results: Optional[Dict[str, Any]] = None
 
@@ -201,6 +232,16 @@ def generate_agent_response(
                 "status": "error",
                 "error": error or f"Order #{target_order_id} was not found in our database."
             }
+
+    elif intent == IntentType.ORDER_TRACKING and target_order_id is None and customer_orders_data:
+        # Customer asked about orders but didn't give an order_id — show all their orders
+        tool_results = {
+            "success": True,
+            "status": "success",
+            "customer_name": customer_full_name or customer_name,
+            "message": f"Found {len(customer_orders_data)} order(s) for this customer.",
+            "all_orders": customer_orders_data
+        }
 
     elif intent == IntentType.REFUND_REQUEST and target_order_id is not None:
         reason = entities.refund_reason or message
