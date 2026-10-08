@@ -156,8 +156,12 @@ def extract_entities_rule_based(text: str) -> ExtractedEntities:
                 scores["new_address"] = 0.92
                 break
 
-    # 7. Extract Dates
-    date_regex = re.compile(r'\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b')
+    # 7. Extract Dates (including Month names)
+    date_regex = re.compile(
+        r'\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b|'
+        r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?\b',
+        re.IGNORECASE
+    )
     date_matches = date_regex.findall(text)
     if date_matches:
         relevant_dates.extend(date_matches)
@@ -344,7 +348,7 @@ def analyze_utterance_rule_based(
             is_ambiguous = True
             missing_entities.append("order_id")
             if intent == IntentType.ORDER_TRACKING:
-                clarification_prompt = f"{greeting_prefix}I'd be happy to check the tracking and estimated delivery for your package. Could you please share your Order ID (e.g. Order #1)?"
+                clarification_prompt = f"{greeting_prefix}I'd be happy to check the tracking and estimated delivery for your package. Could you please share your Order ID, or give me a few details on what you need assistance with?"
             elif intent == IntentType.ORDER_CANCELLATION:
                 clarification_prompt = f"{greeting_prefix}Could you please specify which Order ID you would like to cancel?"
             elif intent == IntentType.REFUND_REQUEST:
