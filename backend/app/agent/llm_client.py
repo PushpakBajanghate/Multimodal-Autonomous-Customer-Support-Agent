@@ -356,7 +356,10 @@ def generate_conversational_llm_response(
         "Core Directives:\n"
         "1. Speak naturally like a real human customer support agent in conversational chatbot style.\n"
         "2. Address the customer warmly by their actual name from the context (e.g. 'Hi Komal'). If they introduce themselves, acknowledge it gracefully.\n"
-        "3. GROUND YOUR ANSWER ON VERIFIED DATABASE RECORDS:\n"
+        "3. STRICTLY GROUND YOUR ANSWER ON VERIFIED DATABASE RECORDS ONLY:\n"
+        "   - NEVER invent, fabricate, or hallucinate order IDs, tracking numbers, carrier names, or any data not present in 'verified_database_records'.\n"
+        "   - If 'verified_database_records' is empty or null, tell the customer you could not find their records and ask for their name, email, or customer ID.\n"
+        "   - If 'all_orders' is present, list ALL orders with their IDs, statuses, amounts, and expected delivery dates conversationally.\n"
         "   - If the customer asks for account info, present their name, email, and order summary conversationally.\n"
         "   - Always mention the customer's name when providing order information.\n"
         "   - If an order is CANCELLED: kindly explain that the order was cancelled, apologize, and ask if they would like help reordering.\n"
@@ -364,7 +367,7 @@ def generate_conversational_llm_response(
         "   - If an order is IN TRANSIT or PLACED: share the live tracking coordinates, carrier name, tracking number, and expected delivery date with warmth.\n"
         "   - If refund was approved: state the refund amount and 3-5 business day timeline.\n"
         "   - If delivery was rescheduled: confirm the new date warmly.\n"
-        "4. If clarification or an Order ID is needed, guide the customer clearly and conversationally.\n"
+        "4. If no database records are found and no customer could be identified, ask the customer to provide their full name, email, or customer ID so you can look them up.\n"
         "5. NEVER output robotic bullet lists, rigid form menus, or canned boilerplate. Talk directly to the user as a real conversational assistant.\n"
         f"6. {language_instruction}"
     )
@@ -473,7 +476,20 @@ def generate_intelligent_offline_response(
 
     # 1. Order Tracking / Inquiries
     if intent == IntentType.ORDER_TRACKING:
-        if tool_results and tool_results.get("status") == "success":
+        if tool_results and tool_results.get("status") == "success" and tool_results.get("all_orders"):
+            # Multiple orders case — list them all
+            all_orders = tool_results["all_orders"]
+            cname = tool_results.get("customer_name", customer_name or "")
+            order_summaries = []
+            for o in all_orders:
+                oid = o.get("id")
+                st = str(o.get("status", "")).title()
+                amt = o.get("total_amount", 0.0)
+                exp = o.get("expected_delivery_str", "Pending")
+                order_summaries.append(f"Order #{oid} — {st}, ${amt:.2f}, Expected: {exp}")
+            orders_text = "; ".join(order_summaries)
+            return f"{greeting}I found {len(all_orders)} orders on your account: {orders_text}. Which order would you like help with? Just share the Order ID!"
+        elif tool_results and tool_results.get("status") == "success" and tool_results.get("tracking"):
             t = tool_results.get("tracking") or tool_results
             oid = t.get("order_id", "N/A")
             raw_st = str(t.get("status", "")).lower()
@@ -500,15 +516,26 @@ def generate_intelligent_offline_response(
             return f"{greeting}I checked on your Order #{oid} for you! The package is currently in transit with {carrier} under tracking number {trk}, and is scheduled to reach you around {exp_date}. Everything is progressing smoothly on schedule!"
 
         elif customer_orders and len(customer_orders) > 0:
-            primary_order = customer_orders[0]
-            oid = primary_order.get("id")
-            st = str(primary_order.get("status", "")).lower()
-            exp = primary_order.get("expected_delivery_str", "upcoming")
-            if "cancel" in st:
-                return f"{greeting}I found Order #{oid} on your account, but it is currently marked as cancelled. Were you asking about this order, or did you have another order number in mind?"
-            return f"{greeting}I found active Order #{oid} on your account, which is currently {st} and scheduled for delivery around {exp}. Would you like live tracking details for this order, or are you inquiring about a different one?"
+            if len(customer_orders) == 1:
+                primary_order = customer_orders[0]
+                oid = primary_order.get("id")
+                st = str(primary_order.get("status", "")).lower()
+                exp = primary_order.get("expected_delivery_str", "upcoming")
+                if "cancel" in st:
+                    return f"{greeting}I found Order #{oid} on your account, but it is currently marked as cancelled. Were you asking about this order, or did you have another order number in mind?"
+                return f"{greeting}I found active Order #{oid} on your account, which is currently {st} and scheduled for delivery around {exp}. Would you like live tracking details for this order?"
+            else:
+                order_summaries = []
+                for o in customer_orders:
+                    oid = o.get("id")
+                    st = str(o.get("status", "")).title()
+                    amt = o.get("total_amount", 0.0)
+                    exp = o.get("expected_delivery_str", "Pending")
+                    order_summaries.append(f"Order #{oid} — {st}, ${amt:.2f}, Expected: {exp}")
+                orders_text = "; ".join(order_summaries)
+                return f"{greeting}I found {len(customer_orders)} orders on your account: {orders_text}. Which order would you like help with? Just share the Order ID!"
         else:
-            return f"{greeting}I'd be glad to track your package! Could you please share your Order ID (like Order #1) so I can pull up the live shipment details for you?"
+            return f"{greeting}I'd love to help! Could you share your full name, email, or Order ID so I can look up your details?"
 
     # 2. Refund Request
     elif intent == IntentType.REFUND_REQUEST:
