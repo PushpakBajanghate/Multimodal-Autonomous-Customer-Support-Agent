@@ -32,6 +32,21 @@ def get_order_tracking(db: Session, order_id: int) -> Tuple[bool, Optional[str],
         "estimated_days_remaining": estimated_days if order.status in ["placed", "shipped"] else 0,
         "is_delivered": order.status == "delivered"
     }
+
+    if order.status == "cancelled":
+        cancellation = (
+            db.query(Cancellation)
+            .filter(Cancellation.order_id == order_id)
+            .order_by(Cancellation.created_at.desc())
+            .first()
+        )
+        if cancellation:
+            tracking_data["cancellation_reason"] = cancellation.reason
+            tracking_data["cancellation_status"] = cancellation.status
+        else:
+            tracking_data["cancellation_reason"] = "Customer cancellation request."
+            tracking_data["cancellation_status"] = "approved"
+
     return True, None, tracking_data
 
 def process_refund(db: Session, order_id: int, reason: str) -> Tuple[bool, Optional[str], Optional[Refund]]:
@@ -134,3 +149,40 @@ def process_cancellation(db: Session, order_id: int, reason: str) -> Tuple[bool,
     db.commit()
     db.refresh(cancellation)
     return True, None, cancellation
+
+
+def get_order_cancellation(db: Session, order_id: int) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+    """Retrieves cancellation details for a cancelled order."""
+    success, error, order = get_order_by_id(db, order_id)
+    if not success or not order:
+        return False, error or f"Order #{order_id} not found.", None
+
+    cancellation = (
+        db.query(Cancellation)
+        .filter(Cancellation.order_id == order_id)
+        .order_by(Cancellation.created_at.desc())
+        .first()
+    )
+
+    if cancellation:
+        return True, None, {
+            "order_id": order.id,
+            "order_status": order.status,
+            "cancellation_id": cancellation.id,
+            "reason": cancellation.reason,
+            "status": cancellation.status,
+            "cancelled_at": cancellation.created_at.strftime("%B %d, %Y") if cancellation.created_at else None
+        }
+
+    if order.status == "cancelled":
+        return True, None, {
+            "order_id": order.id,
+            "order_status": order.status,
+            "cancellation_id": None,
+            "reason": "Cancelled per customer request / automated order cancellation policy.",
+            "status": "approved",
+            "cancelled_at": None
+        }
+
+    return False, f"Order #{order_id} is not cancelled (current status: {order.status}).", None
+
