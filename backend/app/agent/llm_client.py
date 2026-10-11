@@ -362,7 +362,8 @@ def generate_conversational_llm_response(
         "   - If 'all_orders' is present, list ALL orders with their IDs, statuses, amounts, and expected delivery dates conversationally.\n"
         "   - If the customer asks for account info, present their name, email, and order summary conversationally.\n"
         "   - Always mention the customer's name when providing order information.\n"
-        "   - If an order is CANCELLED: kindly explain that the order was cancelled, apologize, and ask if they would like help reordering.\n"
+        "   - If an order is CANCELLED: kindly explain that the order was cancelled. If cancellation_reason is provided in verified_database_records, clearly explain the reason to the customer, and ask if they would like help placing a new order or checking refund status.\n"
+        "   - If the customer asks why an order was cancelled, answer directly and conversationally using the cancellation_reason from verified_database_records.\n"
         "   - If an order is DELIVERED: confirm delivery with carrier and tracking info.\n"
         "   - If an order is IN TRANSIT or PLACED: share the live tracking coordinates, carrier name, tracking number, and expected delivery date with warmth.\n"
         "   - If refund was approved: state the refund amount and 3-5 business day timeline.\n"
@@ -502,9 +503,15 @@ def generate_intelligent_offline_response(
 
             # Context Check: CANCELLED
             if "cancel" in raw_st:
-                if is_hindi:
-                    return f"{greeting}Maine aapka Order #{oid} check kiya hai, aur yeh order actually cancel ho chuka hai, isliye yeh deliver nahi hoga. Main iski vajah check karne ya naya order place karne mein aapki madad kar sakti hoon."
-                return f"{greeting}I looked into Order #{oid} for you, and it appears this order was actually cancelled, so it won't be arriving. I apologize for any confusion! Would you like me to check why it was cancelled, or help you place a new order for these items?"
+                cancel_reason = t.get("cancellation_reason")
+                if cancel_reason:
+                    if is_hindi:
+                        return f"{greeting}Maine aapka Order #{oid} check kiya hai. Yeh order cancel ho chuka hai (Vajah: \"{cancel_reason}\"). Main naya order place karne ya refund ke baare mein aapki madad kar sakti hoon."
+                    return f"{greeting}I looked into Order #{oid} for you, and it was cancelled with the reason: \"{cancel_reason}\". Would you like me to help you place a new order or check refund details?"
+                else:
+                    if is_hindi:
+                        return f"{greeting}Maine aapka Order #{oid} check kiya hai, aur yeh order actually cancel ho chuka hai, isliye yeh deliver nahi hoga. Main iski vajah check karne ya naya order place karne mein aapki madad kar sakti hoon."
+                    return f"{greeting}I looked into Order #{oid} for you, and it appears this order was actually cancelled, so it won't be arriving. I apologize for any confusion! Would you like me to check why it was cancelled, or help you place a new order for these items?"
 
             # Context Check: DELIVERED
             if is_delivered or "deliver" in raw_st:
@@ -542,6 +549,12 @@ def generate_intelligent_offline_response(
                 if is_hindi:
                     return f"{greeting}Aapke account mein {len(customer_orders)} orders mile hain: {orders_text}. Kripya batayein kis order ke baare mein madad chahiye? Apna Order ID bhejiye!"
                 return f"{greeting}I found {len(customer_orders)} orders on your account: {orders_text}. Which order would you like help with? Just share the Order ID!"
+        elif tool_results and tool_results.get("status") == "no_orders":
+            c_name = tool_results.get("customer_name") or customer_name or ""
+            name_str = f" for {c_name}" if c_name else ""
+            if is_hindi:
+                return f"{greeting}Aapke account{name_str} par koi active orders nahi mile. Kripya apna Order ID batayein taaki main check kar sakoon."
+            return f"{greeting}I looked up your account, but couldn't find any recent orders on file{name_str}. If you have an Order ID from your confirmation email, please share it and I'll be glad to help!"
         else:
             if is_hindi:
                 return f"{greeting}Main aapki madad karna chahti hoon! Kripya apna naam, email ya Order ID bhejiye taaki main aapki jaankari dhundh sakoon."
@@ -562,9 +575,16 @@ def generate_intelligent_offline_response(
         else:
             return f"{greeting}We provide full refunds within 30 days of delivery. Could you please share your Order ID and the reason for the refund so I can submit this for you right away?"
 
-    # 3. Order Cancellation
+    # 3. Order Cancellation & Inquiries
     elif intent == IntentType.ORDER_CANCELLATION:
-        if tool_results and tool_results.get("success"):
+        if tool_results and tool_results.get("cancellation_inquiry"):
+            oid = tool_results.get("order_id", "N/A")
+            reason = tool_results.get("cancellation_reason", "Customer request")
+            c_status = tool_results.get("cancellation_status", "approved")
+            if is_hindi:
+                return f"{greeting}Maine aapka Order #{oid} check kiya hai. Yeh order is vajah se cancel hua tha: \"{reason}\". Iska cancellation status abhi '{c_status}' hai. Agar aapko naya order place karna ho ya koi aur sahayata chahiye, toh batayein!"
+            return f"{greeting}I looked into Order #{oid} for you. It was cancelled with the reason: \"{reason}\" (Cancellation Status: {c_status.title()}). Please let me know if you would like me to help you place a new order or if you need assistance with anything else!"
+        elif tool_results and tool_results.get("success"):
             oid = tool_results.get("order_id", "N/A")
             if is_hindi:
                 return f"{greeting}Aapka Order #{oid} safalta-poorvak cancel kar diya gaya hai. Kisi bhi payment charge ko release kar diya gaya hai."
@@ -606,10 +626,30 @@ def generate_intelligent_offline_response(
         if tool_results and tool_results.get("phone_number"):
             p = tool_results.get("phone_number")
             return f"{greeting}I am dialing your number ({p}) right now! Please pick up when your phone rings to speak live with our AI voice agent."
+    # 8. Account Information
+    elif intent == IntentType.ACCOUNT_INFO:
+        if tool_results and tool_results.get("success"):
+            acc = tool_results.get("account", {})
+            c_name = acc.get("name") or customer_name or "there"
+            email = acc.get("email", "")
+            orders = tool_results.get("all_orders", [])
+            orders_summary = ""
+            if orders:
+                orders_list = "; ".join([
+                    f"Order #{o['id']} ({str(o.get('status', '')).title()}, ${o.get('total_amount', 0.0):.2f}, Expected: {o.get('expected_delivery_str', 'Pending')})"
+                    for o in orders[:5]
+                ])
+                orders_summary = f" I found {len(orders)} order(s) on your account: {orders_list}."
+            if is_hindi:
+                return f"{greeting}Aapka account mil gaya hai. Naam: {c_name}, Email: {email}.{orders_summary} Main aapki kis tarah madad kar sakti hoon?"
+            return f"{greeting}I've pulled up your account details for {c_name} ({email}).{orders_summary} How can I assist you with your orders or account today?"
+        elif tool_results and not tool_results.get("success"):
+            err = tool_results.get("error", "Account details not found.")
+            return f"{greeting}{err}"
         else:
-            return f"{greeting}I would love to give you a call! Please provide your phone number with your country code (e.g. +91...) so I can connect with you."
+            return f"{greeting}I'd be happy to check your account details! Could you please share your customer ID, email, or full name?"
 
-    # 8. Greetings & General Inquiries
+    # 9. Greetings & General Inquiries
     else:
         if customer_name and any(word in msg_lower for word in ["hello", "hi", "hey", "namaste", "namaskar"]):
             if is_hindi:
