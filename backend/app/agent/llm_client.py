@@ -488,6 +488,8 @@ def generate_intelligent_offline_response(
                 exp = o.get("expected_delivery_str", "Pending")
                 order_summaries.append(f"Order #{oid} — {st}, ${amt:.2f}, Expected: {exp}")
             orders_text = "; ".join(order_summaries)
+            if is_hindi:
+                return f"{greeting}Aapke account mein {len(all_orders)} orders mile hain: {orders_text}. Kripya batayein kis order ke baare mein madad chahiye? Apna Order ID bhejiye!"
             return f"{greeting}I found {len(all_orders)} orders on your account: {orders_text}. Which order would you like help with? Just share the Order ID!"
         elif tool_results and tool_results.get("status") == "success" and tool_results.get("tracking"):
             t = tool_results.get("tracking") or tool_results
@@ -522,7 +524,11 @@ def generate_intelligent_offline_response(
                 st = str(primary_order.get("status", "")).lower()
                 exp = primary_order.get("expected_delivery_str", "upcoming")
                 if "cancel" in st:
+                    if is_hindi:
+                        return f"{greeting}Order #{oid} aapke account mein mila hai, lekin yeh cancel ho chuka hai. Kya aap isi order ke baare mein pooch rahe the, ya kisi aur order ke baare mein?"
                     return f"{greeting}I found Order #{oid} on your account, but it is currently marked as cancelled. Were you asking about this order, or did you have another order number in mind?"
+                if is_hindi:
+                    return f"{greeting}Aapke account mein Order #{oid} mila hai, jo abhi {st} status mein hai aur {exp} tak deliver hone ki ummeed hai. Kya aap iske live tracking details chahte hain?"
                 return f"{greeting}I found active Order #{oid} on your account, which is currently {st} and scheduled for delivery around {exp}. Would you like live tracking details for this order?"
             else:
                 order_summaries = []
@@ -533,8 +539,12 @@ def generate_intelligent_offline_response(
                     exp = o.get("expected_delivery_str", "Pending")
                     order_summaries.append(f"Order #{oid} — {st}, ${amt:.2f}, Expected: {exp}")
                 orders_text = "; ".join(order_summaries)
+                if is_hindi:
+                    return f"{greeting}Aapke account mein {len(customer_orders)} orders mile hain: {orders_text}. Kripya batayein kis order ke baare mein madad chahiye? Apna Order ID bhejiye!"
                 return f"{greeting}I found {len(customer_orders)} orders on your account: {orders_text}. Which order would you like help with? Just share the Order ID!"
         else:
+            if is_hindi:
+                return f"{greeting}Main aapki madad karna chahti hoon! Kripya apna naam, email ya Order ID bhejiye taaki main aapki jaankari dhundh sakoon."
             return f"{greeting}I'd love to help! Could you share your full name, email, or Order ID so I can look up your details?"
 
     # 2. Refund Request
