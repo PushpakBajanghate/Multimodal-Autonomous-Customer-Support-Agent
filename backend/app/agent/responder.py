@@ -16,6 +16,7 @@ from app.agent.llm_client import (
 )
 from app.services.order_service import (
     get_order_tracking,
+    get_order_cancellation,
     process_refund,
     process_cancellation
 )
@@ -186,6 +187,19 @@ def generate_agent_response(
                 if not analysis.missing_entities:
                     analysis.clarification_prompt = None
 
+    # Connect target_order_id relation with customer database records if customer profile is not yet resolved
+    if target_order_id and (not resolved_customer_id or resolved_customer_id == 0 or not customer_full_name):
+        try:
+            ord_obj = db.query(Order).filter(Order.id == target_order_id).first()
+            if ord_obj and ord_obj.customer_id:
+                resolved_customer_id = ord_obj.customer_id
+                if ord_obj.customer:
+                    customer_full_name = ord_obj.customer.name
+                    customer_name = ord_obj.customer.name.split()[0]
+                    customer_email_address = ord_obj.customer.email
+        except Exception:
+            pass
+
     tool_results: Optional[Dict[str, Any]] = None
 
     # 3. Dispatch to Domain Logic based on Intent if parameters are present
@@ -194,12 +208,14 @@ def generate_agent_response(
             tool_results = {
                 "success": True,
                 "status": "success",
+                "customer_name": customer_full_name or customer_name,
                 "account": {
                     "customer_id": resolved_customer_id,
                     "name": customer_full_name,
                     "email": customer_email_address,
                     "active_orders_count": len(customer_orders_data)
-                }
+                },
+                "all_orders": customer_orders_data
             }
         else:
             tool_results = {
@@ -233,15 +249,23 @@ def generate_agent_response(
                 "error": error or f"Order #{target_order_id} was not found in our database."
             }
 
-    elif intent == IntentType.ORDER_TRACKING and target_order_id is None and customer_orders_data:
-        # Customer asked about orders but didn't give an order_id — show all their orders
-        tool_results = {
-            "success": True,
-            "status": "success",
-            "customer_name": customer_full_name or customer_name,
-            "message": f"Found {len(customer_orders_data)} order(s) for this customer.",
-            "all_orders": customer_orders_data
-        }
+    elif intent == IntentType.ORDER_TRACKING and target_order_id is None:
+        if customer_orders_data:
+            # Customer asked about orders but didn't give an order_id — show all their orders
+            tool_results = {
+                "success": True,
+                "status": "success",
+                "customer_name": customer_full_name or customer_name,
+                "message": f"Found {len(customer_orders_data)} order(s) for this customer.",
+                "all_orders": customer_orders_data
+            }
+        elif resolved_customer_id and customer_full_name:
+            tool_results = {
+                "success": True,
+                "status": "no_orders",
+                "customer_name": customer_full_name or customer_name,
+                "message": f"No orders found on file for {customer_full_name}."
+            }
 
     elif intent == IntentType.REFUND_REQUEST and target_order_id is not None:
         reason = entities.refund_reason or message
@@ -266,22 +290,54 @@ def generate_agent_response(
             }
 
     elif intent == IntentType.ORDER_CANCELLATION and target_order_id is not None:
-        reason = entities.refund_reason or message
-        success, error, cancellation = process_cancellation(db, target_order_id, reason=reason)
-        if success and cancellation:
-            tool_results = {
-                "success": True,
-                "status": "success",
-                "customer_name": customer_full_name or customer_name,
-                "order_id": target_order_id,
-                "status_result": cancellation.status
-            }
+        import re
+        is_inquiry = bool(re.search(
+            r'\b(?:why|reason|details?|status|kyu|kyun|vajah|batao|check|pooch)\b',
+            message,
+            re.IGNORECASE
+        ))
+
+        # Check existing order status first
+        existing_order = db.query(Order).filter(Order.id == target_order_id).first()
+        is_already_cancelled = (existing_order and existing_order.status == "cancelled")
+
+        if is_inquiry or is_already_cancelled:
+            c_success, c_error, c_info = get_order_cancellation(db, target_order_id)
+            if c_success and c_info:
+                tool_results = {
+                    "success": True,
+                    "status": "success",
+                    "cancellation_inquiry": True,
+                    "order_id": target_order_id,
+                    "customer_name": customer_full_name or customer_name,
+                    "cancellation_reason": c_info.get("reason"),
+                    "cancellation_status": c_info.get("status", "approved"),
+                    "order_status": c_info.get("order_status", "cancelled"),
+                    "cancelled_at": c_info.get("cancelled_at")
+                }
+            else:
+                tool_results = {
+                    "success": False,
+                    "status": "error",
+                    "error": c_error or f"Order #{target_order_id} is not cancelled."
+                }
         else:
-            tool_results = {
-                "success": False,
-                "status": "error",
-                "error": error or f"Unable to cancel Order #{target_order_id}."
-            }
+            reason = entities.refund_reason or message
+            success, error, cancellation = process_cancellation(db, target_order_id, reason=reason)
+            if success and cancellation:
+                tool_results = {
+                    "success": True,
+                    "status": "success",
+                    "customer_name": customer_full_name or customer_name,
+                    "order_id": target_order_id,
+                    "status_result": cancellation.status
+                }
+            else:
+                tool_results = {
+                    "success": False,
+                    "status": "error",
+                    "error": error or f"Unable to cancel Order #{target_order_id}."
+                }
 
     elif intent == IntentType.DELIVERY_RESCHEDULE and target_order_id is not None and entities.relevant_dates:
         from app.services.order_service import get_order_by_id
