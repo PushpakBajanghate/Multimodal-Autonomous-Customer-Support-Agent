@@ -31,21 +31,32 @@ COMMON_DATE_WORDS = [
 ]
 
 
+NAME_BLACKLIST = {
+    "aura", "here", "there", "and", "or", "agent", "support", "assistant", "bot",
+    "customer", "user", "order", "help", "hello", "hi", "hey", "ready", "please",
+    "why", "what", "where", "how", "when", "yes", "no", "ok", "okay", "thanks", "thank",
+    "looking", "trying", "wondering", "just", "calling", "writing", "a", "an", "the",
+    "need", "want", "have", "am", "is", "are", "refund", "cancel", "cancelling", "tracking",
+    "it", "this", "that", "was", "my", "your", "for", "with", "about"
+}
+
+
 def _extract_customer_name(text: str) -> Optional[str]:
     """Helper to detect customer name from introductory phrases."""
     name_patterns = [
         r'(?:i am|my name is|this is|i\'m|myself)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
-        r'(?:hi|hello|hey)\s+(?:i am|i\'m|this is)?\s*([A-Za-z]+(?:\s+[A-Za-z]+)?)\s+(?:here|i need|i want|and|please)',
-        r'(?:naam\s+hai\s+|naam\s+mera\s+)([A-Za-z]+(?:\s+[A-Za-z]+)?)'
+        r'(?:hi|hello|hey)\s+(?:i am|i\'m|this is)?\s*([A-Za-z]+(?:\s+[A-Za-z]+)?)\s+(?:here|i need|i want|please)\b',
+        r'(?:mera\s+naam\s+|naam\s+hai\s+|naam\s+mera\s+)([A-Za-z]+(?:\s+[A-Za-z]+)?)(?:\s+hai)?'
     ]
     for pat in name_patterns:
         match = re.search(pat, text, re.IGNORECASE)
         if match:
             candidate = match.group(1).strip().title()
-            if candidate.lower() not in [
-                "here", "looking", "trying", "wondering", "just", "calling", "writing",
-                "a", "an", "the", "user", "customer", "support", "agent", "need", "want", "have", "hi", "hello"
-            ]:
+            words = [w for w in candidate.split() if w.lower() not in {"hai", "hoon", "hu", "tha", "thi", "here", "aur"}]
+            if not words or any(w.lower() in NAME_BLACKLIST for w in words):
+                continue
+            candidate = " ".join(words)
+            if len(candidate) >= 2:
                 return candidate
     return None
 
@@ -208,11 +219,19 @@ def classify_intent_rule_based(
     if greeting_match and not has_action_word and len(t) < 35:
         return IntentType.UNKNOWN, 0.90, "Standard greeting without specific support intent."
 
-    # 1. Order Cancellation (High Priority - typo tolerant)
+    # 1. Order Cancellation & Cancellation Inquiries (High Priority - typo tolerant)
+    cancellation_inquiry_regex = re.compile(
+        r'\b(?:why\s+(?:was\s+it|it\s+was|is\s+it|did\s+it|my\s+order\s+was|the\s+order\s+was)?\s*cancel(?:led|ed)?|cancel(?:lation)?\s*(?:reason|status|details?|kyu|kyun)|why\s+cancel(?:led|ed)?)\b|'
+        r'\b(?:cancel\s*kyu\s*hua|kyu\s*cancel\s*kiya|cancel\s*hone\s*ka\s*reason|vajah\s*kya\s*thi)\b',
+        re.IGNORECASE
+    )
+    if cancellation_inquiry_regex.search(t):
+        return IntentType.ORDER_CANCELLATION, 0.96, "Detected inquiry about order cancellation / cancellation reason."
+
     cancellation_regex = re.compile(
         r'\b(?:cancel|cancle|canecl|cancl|cancell|cancelling|cancellation|stop|band)\b.*?\b(?:order|purchase|parcel|shipment|shoes|item|product|package)\b|'
         r'\b(?:order|purchase|parcel|shipment|item|product|package)\b.*?\b(?:cancel|cancle|canecl|cancl|cancell|cancellation)\b|'
-        r'\b(?:cancel|cancle|canecl|cancl|cancell)\s*(?:karna|kardo|kar do|this|my|the)?\b',
+        r'\b(?:cancel|cancle|canecl|cancl|cancell|cancelled|canceled)\s*(?:karna|kardo|kar do|this|my|the|it|please)?\b',
         re.IGNORECASE
     )
     if cancellation_regex.search(t) or "nahi chahiye order" in t:
@@ -251,11 +270,12 @@ def classify_intent_rule_based(
         "eta", "when will it arrive", "tracking info", "status of order", "track order",
         "get my order", "order soon", "get order", "receive my order", "delivery soon",
         "parcel kab", "order update", "check my order", "status of my order",
-        "when is my order", "package status", "when will my order", "can i get my order"
+        "when is my order", "package status", "when will my order", "can i get my order",
+        "orders", "my orders"
     ]
     if any(kw in t for kw in tracking_keywords) or (
-        any(p in t for p in ["order", "parcel", "package", "item"]) and any(w in t for w in ["where", "status", "kahan", "kab", "when", "soon", "arrive", "get", "delivery", "track", "trak", "reach", "receive", "dispatched"])
-    ):
+        any(p in t for p in ["order", "parcel", "package", "item", "orders"]) and any(w in t for w in ["where", "status", "kahan", "kab", "when", "soon", "arrive", "get", "delivery", "track", "trak", "reach", "receive", "dispatched", "dont know", "don't know", "not know", "pata nahi", "lost", "forgot", "my name", "name is", "naam hai"])
+    ) or bool(re.fullmatch(r'#\d{1,6}', t)) or bool(re.fullmatch(r'(?:order|tracking|orders)\s*#?\s*\d{1,6}?', t)):
         return IntentType.ORDER_TRACKING, 0.95, "Detected order tracking / status lookup intent."
 
     # 6. Outbound Phone Call Request
@@ -274,8 +294,8 @@ def classify_intent_rule_based(
         return IntentType.OUTBOUND_CALL_REQUEST, 0.96, "Detected outbound phone call request intent."
 
     # 7. Account Info
-    account_keywords = ["my name", "my email", "my account", "my details", "who am i", "account info", "mera naam", "mera account", "profile details"]
-    if any(kw in t for kw in account_keywords):
+    account_keywords = ["my email", "my account", "my details", "who am i", "account info", "mera account", "profile details"]
+    if any(kw in t for kw in account_keywords) and not any(p in t for p in ["order", "orders", "parcel", "shipment"]):
         return IntentType.ACCOUNT_INFO, 0.95, "Detected account information request."
 
     # 8. Delivery Reschedule
@@ -292,13 +312,26 @@ def classify_intent_rule_based(
     if any(kw in t for kw in ticket_keywords):
         return IntentType.TICKET_CREATION, 0.95, "Detected ticket creation or human agent escalation intent."
 
-    # 7. Check if conversation context provides intent
+    # 10. Check if conversation context provides intent
     if conversation_context and len(conversation_context) > 0:
         last_msg = conversation_context[-1].get("text", "").lower()
-        if "order id" in last_msg or "which order" in last_msg:
+        if "order id" in last_msg or "which order" in last_msg or "kaunsa order" in last_msg:
             num_match = re.search(r'\b\d+\b', t)
             if num_match:
+                if any(w in last_msg for w in ["refund", "money back", "return", "paise"]):
+                    return IntentType.REFUND_REQUEST, 0.90, "Contextual order ID response to refund inquiry."
+                elif any(w in last_msg for w in ["cancel", "cancellation", "radd"]):
+                    return IntentType.ORDER_CANCELLATION, 0.90, "Contextual order ID response to cancellation inquiry."
+                elif any(w in last_msg for w in ["reschedule", "delivery date", "tareekh"]):
+                    return IntentType.DELIVERY_RESCHEDULE, 0.90, "Contextual order ID response to reschedule inquiry."
+                elif any(w in last_msg for w in ["address", "pata"]):
+                    return IntentType.ADDRESS_UPDATE, 0.90, "Contextual order ID response to address change."
                 return IntentType.ORDER_TRACKING, 0.85, "Contextual order ID response to tracking inquiry."
+
+        # If user provides customer name following an order inquiry prompt
+        if _extract_customer_name(t) is not None:
+            if any(w in last_msg for w in ["order id", "which order", "assistance with", "orders", "order"]):
+                return IntentType.ORDER_TRACKING, 0.90, "Customer name provided in response to order inquiry."
 
     # Default to UNKNOWN
     return IntentType.UNKNOWN, 0.70, "No recognized support intent keyword matched."
@@ -314,16 +347,17 @@ def analyze_utterance_rule_based(
     user_name = _extract_customer_name(text)
     if not user_name and conversation_context:
         for msg in reversed(conversation_context):
-            ctx_name = _extract_customer_name(msg.get("text", ""))
-            if ctx_name:
-                user_name = ctx_name
-                entities.customer_name = ctx_name
-                break
+            if msg.get("sender") in ("user", "customer"):
+                ctx_name = _extract_customer_name(msg.get("text", ""))
+                if ctx_name:
+                    user_name = ctx_name
+                    entities.customer_name = ctx_name
+                    break
     greeting_prefix = f"Hello {user_name}! " if user_name else "Hello! "
 
     # Check conversation context if order_id was previously identified
-    # Do not inherit an order_id if user is negating/correcting, or if previous message indicated order not found
-    is_negating_order = bool(re.search(r'\b(?:not|is not|isn\'t|no|wrong|nahi hai|galat|different|nhi)\s*(?:#|order|id)?\s*(\d+)?', text, re.IGNORECASE))
+    # Do not inherit an order_id if user is negating/correcting, says they don't know, or if previous message indicated order not found
+    is_negating_order = bool(re.search(r'\b(?:not|is not|isn\'t|no|wrong|nahi hai|galat|different|nhi|dont know|don\'t know|pata nahi|nahi pata)\b', text, re.IGNORECASE))
     if entities.order_id is None and not is_negating_order and conversation_context:
         # Check if the agent recently said the order was not found
         recently_failed = any(
@@ -332,11 +366,12 @@ def analyze_utterance_rule_based(
         )
         if not recently_failed:
             for msg in reversed(conversation_context):
-                ctx_entities = extract_entities_rule_based(msg.get("text", ""))
-                if ctx_entities.order_id is not None:
-                    entities.order_id = ctx_entities.order_id
-                    entities.confidence_scores["order_id"] = 0.85
-                    break
+                if msg.get("sender") in ("user", "customer"):
+                    ctx_entities = extract_entities_rule_based(msg.get("text", ""))
+                    if ctx_entities.order_id is not None:
+                        entities.order_id = ctx_entities.order_id
+                        entities.confidence_scores["order_id"] = 0.85
+                        break
 
     # Ambiguity detection
     is_ambiguous = False
