@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Tuple, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from app.models import Order, Refund, Cancellation
+from app.models import Order, OrderItem, Refund, Cancellation
 
 def get_order_by_id(db: Session, order_id: int) -> Tuple[bool, Optional[str], Optional[Order]]:
     order = db.query(Order).filter(Order.id == order_id).first()
@@ -185,4 +185,43 @@ def get_order_cancellation(db: Session, order_id: int) -> Tuple[bool, Optional[s
         }
 
     return False, f"Order #{order_id} is not cancelled (current status: {order.status}).", None
+
+
+def reorder_cancelled_order(db: Session, order_id: int) -> Tuple[bool, Optional[str], Optional[Order]]:
+    """
+    Reorders an order (typically after cancellation) by creating a new active order 
+    with the same customer and items in 'placed' status.
+    """
+    success, error, original_order = get_order_by_id(db, order_id)
+    if not success or not original_order:
+        return False, error or f"Order #{order_id} not found.", None
+
+    now = datetime.now(timezone.utc)
+    expected_delivery = now + timedelta(days=4)
+
+    new_order = Order(
+        customer_id=original_order.customer_id,
+        status="placed",
+        order_date=now,
+        expected_delivery=expected_delivery,
+        total_amount=original_order.total_amount,
+        is_editable=True
+    )
+    db.add(new_order)
+    db.flush()
+
+    # Clone all items from the original order
+    for item in original_order.items:
+        new_item = OrderItem(
+            order_id=new_order.id,
+            product_name=item.product_name,
+            quantity=item.quantity,
+            price=item.price
+        )
+        db.add(new_item)
+
+    db.commit()
+    db.refresh(new_order)
+    return True, None, new_order
+
 
