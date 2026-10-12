@@ -237,7 +237,15 @@ def classify_intent_rule_based(
     if cancellation_regex.search(t) or "nahi chahiye order" in t:
         return IntentType.ORDER_CANCELLATION, 0.96, "Detected explicit order cancellation intent."
 
-    # 2. Refund & Return Request (typo tolerant)
+    # 2. Reorder / Place New Order (High Priority - especially after cancellation)
+    reorder_regex = re.compile(
+        r'\b(?:reorder|re-order|re\s+order|place\s+(?:a\s+)?new\s+order|order\s+again|buy\s+again|reorder\s+(?:the\s+same|this|it|my)?\s*order|order\s+it\s+again|order\s+kardo|phir\s+se\s+order|dobara\s+order|naya\s+order\s+place|same\s+order\s+again)\b',
+        re.IGNORECASE
+    )
+    if reorder_regex.search(t):
+        return IntentType.ORDER_REORDER, 0.96, "Detected explicit order reorder / new order placement intent."
+
+    # 3. Refund & Return Request (typo tolerant)
     refund_regex = re.compile(
         r'\b(?:refund|refnd|rfund|money back|paise wapas|return|replace|wapas|broken|damaged|defective|faulty|kharab|tuta)\b',
         re.IGNORECASE
@@ -328,6 +336,11 @@ def classify_intent_rule_based(
                     return IntentType.ADDRESS_UPDATE, 0.90, "Contextual order ID response to address change."
                 return IntentType.ORDER_TRACKING, 0.85, "Contextual order ID response to tracking inquiry."
 
+        # If assistant offered to help place a new order or reorder (e.g. after cancellation)
+        if any(w in last_msg for w in ["place a new order", "help you place a new order", "help reordering", "reorder"]):
+            if any(w in t for w in ["place a new order", "reorder", "yes", "sure", "please do", "order again", "do it", "please", "kardo", "haan", "ha"]):
+                return IntentType.ORDER_REORDER, 0.95, "User confirmed reorder / new order placement following assistant offer."
+
         # If user provides customer name following an order inquiry prompt
         if _extract_customer_name(t) is not None:
             if any(w in last_msg for w in ["order id", "which order", "assistance with", "orders", "order"]):
@@ -373,12 +386,21 @@ def analyze_utterance_rule_based(
                         entities.confidence_scores["order_id"] = 0.85
                         break
 
+    # For ORDER_REORDER, inherit the previously discussed order ID if not specified in the utterance
+    if intent == IntentType.ORDER_REORDER and entities.order_id is None and conversation_context:
+        for msg in reversed(conversation_context):
+            m = re.search(r'Order #?(\d+)', msg.get("text", ""), re.IGNORECASE) or re.search(r'#(\d+)', msg.get("text", ""))
+            if m:
+                entities.order_id = int(m.group(1))
+                entities.confidence_scores["order_id"] = 0.90
+                break
+
     # Ambiguity detection
     is_ambiguous = False
     missing_entities: List[str] = []
     clarification_prompt: Optional[str] = None
 
-    if intent in (IntentType.ORDER_TRACKING, IntentType.ORDER_CANCELLATION, IntentType.REFUND_REQUEST):
+    if intent in (IntentType.ORDER_TRACKING, IntentType.ORDER_CANCELLATION, IntentType.REFUND_REQUEST, IntentType.ORDER_REORDER):
         if entities.order_id is None:
             is_ambiguous = True
             missing_entities.append("order_id")
@@ -388,6 +410,8 @@ def analyze_utterance_rule_based(
                 clarification_prompt = f"{greeting_prefix}Could you please specify which Order ID you would like to cancel?"
             elif intent == IntentType.REFUND_REQUEST:
                 clarification_prompt = f"{greeting_prefix}Please share your Order ID and the reason for the refund so I can process it for you."
+            elif intent == IntentType.ORDER_REORDER:
+                clarification_prompt = f"{greeting_prefix}Which Order ID would you like me to reorder for you?"
 
     elif intent == IntentType.ADDRESS_UPDATE:
         if entities.order_id is None:
