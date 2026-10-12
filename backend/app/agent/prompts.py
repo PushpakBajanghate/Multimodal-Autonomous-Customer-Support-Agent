@@ -15,7 +15,9 @@ You must return valid JSON strictly following the output schema.
 5. PASSWORD_RESET: Any request for password reset, login assistance, or account recovery (e.g., "forgot my password", "reset password", "password reset link bhejo").
 6. TICKET_CREATION: Any general complaint, request to speak with a human agent, or issue requiring escalation (e.g., "create a support ticket", "shikayat darj karni hai").
 7. OUTBOUND_CALL_REQUEST: Any request for an AI voice agent phone call, call back, or speaking on the phone (e.g., "call me", "call me on +919876543210", "mujhe call karo", "want a phone call").
-8. UNKNOWN: General conversation, greetings, out-of-scope inquiries, or broad questions (e.g., "hello", "how does shipping work", "who are you").
+8. ACCOUNT_INFO: Any request to look up the customer's account profile, registered email, or active orders list (e.g., "who am I", "my account details", "show my orders", "meri details").
+9. ORDER_REORDER: Any request to place a new order, reorder, or reorder items from a previously cancelled or completed order (e.g., "place a new order", "reorder the same order", "order again", "phir se order kardo", "naya order place kardo").
+10. UNKNOWN: General conversation, greetings, out-of-scope inquiries, or broad questions (e.g., "hello", "how does shipping work", "who are you").
 
 ### Entity Extraction:
 Extract the following entities with confidence scores between 0.0 and 1.0 based on real-time semantic analysis:
@@ -233,6 +235,30 @@ FEW_SHOT_EXAMPLES = [
             "missing_entities": [],
             "clarification_prompt": None,
             "reasoning": "Customer specifically requested human escalation / ticket creation for billing issue."
+        }
+    },
+    {
+        "input": "place a new order for order 87",
+        "output": {
+            "intent": "ORDER_REORDER",
+            "confidence": 0.98,
+            "entities": {
+                "order_id": 87,
+                "customer_id": None,
+                "email": None,
+                "phone": None,
+                "product_info": None,
+                "refund_reason": None,
+                "new_address": None,
+                "relevant_dates": [],
+                "confidence_scores": {
+                    "order_id": 0.99
+                }
+            },
+            "is_ambiguous": False,
+            "missing_entities": [],
+            "clarification_prompt": None,
+            "reasoning": "Clear request to reorder/place a new order for previous order 87."
         }
     }
 ]

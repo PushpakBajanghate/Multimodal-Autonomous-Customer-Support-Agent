@@ -364,6 +364,7 @@ def generate_conversational_llm_response(
         "   - Always mention the customer's name when providing order information.\n"
         "   - If an order is CANCELLED: kindly explain that the order was cancelled. If cancellation_reason is provided in verified_database_records, clearly explain the reason to the customer, and ask if they would like help placing a new order or checking refund status.\n"
         "   - If the customer asks why an order was cancelled, answer directly and conversationally using the cancellation_reason from verified_database_records.\n"
+        "   - If the customer asks to place a new order or reorder: confirm the new Order ID, the items included, total amount, and expected delivery date warmly.\n"
         "   - If an order is DELIVERED: confirm delivery with carrier and tracking info.\n"
         "   - If an order is IN TRANSIT or PLACED: share the live tracking coordinates, carrier name, tracking number, and expected delivery date with warmth.\n"
         "   - If refund was approved: state the refund amount and 3-5 business day timeline.\n"
@@ -394,7 +395,8 @@ def generate_conversational_llm_response(
     expected_oid = None
     if tool_results and tool_results.get("status") == "success":
         expected_oid = (
-            tool_results.get("order_id")
+            tool_results.get("new_order_id")
+            or tool_results.get("order_id")
             or (tool_results.get("order") or {}).get("id")
             or (tool_results.get("tracking") or {}).get("order_id")
             or (tool_results.get("refund") or {}).get("order_id")
@@ -595,7 +597,24 @@ def generate_intelligent_offline_response(
         else:
             return f"{greeting}Orders can be cancelled anytime before they are shipped out. Which Order ID would you like me to cancel for you?"
 
-    # 4. Address Update
+    # 4. Reorder Cancelled Order
+    elif intent == IntentType.ORDER_REORDER:
+        if tool_results and tool_results.get("success"):
+            new_oid = tool_results.get("new_order_id", "N/A")
+            orig_oid = tool_results.get("original_order_id", "N/A")
+            items = tool_results.get("items_str", "items from your previous order")
+            amt = float(tool_results.get("total_amount", 0.0))
+            exp_date = tool_results.get("expected_delivery_str", "in 4 days")
+            if is_hindi:
+                return f"{greeting}Maine aapke cancelled Order #{orig_oid} ke items ke saath ek naya Order #{new_oid} place kar diya hai! Items: {items}. Total amount: ₹{amt:.2f}. Yeh order {exp_date} tak deliver ho jayega."
+            return f"{greeting}Great news! I have successfully placed a new Order #{new_oid} for you with the items from Order #{orig_oid} ({items}). The total amount is ${amt:.2f}, and it is scheduled to arrive by {exp_date}."
+        elif tool_results and not tool_results.get("success"):
+            err = tool_results.get("error", "Unable to place a new order at this time.")
+            return f"{greeting}I tried to place the reorder for you, but {err.lower() if err.startswith('Unable') else err}"
+        else:
+            return f"{greeting}I'd be glad to help you place a new order or reorder! Which Order ID would you like to reorder?"
+
+    # 5. Address Update
     elif intent == IntentType.ADDRESS_UPDATE:
         if tool_results and tool_results.get("success"):
             oid = tool_results.get("order_id")
