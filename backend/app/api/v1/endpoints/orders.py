@@ -141,3 +141,33 @@ def cancel_order(
         reason=None,
         data=CancellationRead.model_validate(cancellation)
     )
+
+@router.post("/{id}/reorder", response_model=ApiResponse[OrderRead])
+def reorder_order(
+    id: int,
+    db: Session = Depends(get_db),
+    current_customer: CustomerPrincipal = Depends(require_verified_customer)
+):
+    """
+    Sensitive Action: Reorders an existing order for the verified customer.
+    """
+    _check_order_ownership(db, current_customer, id)
+    success, error, new_order = services.reorder_cancelled_order(db, order_id=id)
+    if not success or not new_order:
+        is_not_found = "not found" in (error or "").lower()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND if is_not_found else status.HTTP_400_BAD_REQUEST,
+            detail=ApiResponse[OrderRead](
+                success=False,
+                status="failure",
+                reason=error,
+                data=None
+            ).model_dump()
+        )
+
+    return ApiResponse[OrderRead](
+        success=True,
+        status="success",
+        reason=None,
+        data=OrderRead.model_validate(new_order)
+    )
