@@ -17,6 +17,7 @@ from app.agent.llm_client import (
 from app.services.order_service import (
     get_order_tracking,
     get_order_cancellation,
+    reorder_cancelled_order,
     process_refund,
     process_cancellation
 )
@@ -48,6 +49,8 @@ def _hindi_clarification(intent: IntentType, missing_entities: List[str], custom
         return f"{prefix}Main aapke order ka live status check kar sakti hoon. Kripya apna Order ID bhejiye, ya apna naam/email batayiye."
     if intent == IntentType.ORDER_CANCELLATION and "order_id" in missing_entities:
         return f"{prefix}Kripya batayiye kaunsa Order ID cancel karna hai."
+    if intent == IntentType.ORDER_REORDER and "order_id" in missing_entities:
+        return f"{prefix}Kripya batayiye kaunsa Order ID reorder ya naya order place karna hai."
     if intent == IntentType.REFUND_REQUEST and "order_id" in missing_entities:
         return f"{prefix}Refund process karne ke liye kripya Order ID aur refund ka reason bhejiye."
     if intent == IntentType.ADDRESS_UPDATE:
@@ -176,7 +179,7 @@ def generate_agent_response(
 
     # If order_id not in entities but customer has active orders, we can relate it
     target_order_id = entities.order_id
-    if target_order_id is None and intent in (IntentType.ORDER_TRACKING, IntentType.REFUND_REQUEST, IntentType.ORDER_CANCELLATION, IntentType.DELIVERY_RESCHEDULE):
+    if target_order_id is None and intent in (IntentType.ORDER_TRACKING, IntentType.REFUND_REQUEST, IntentType.ORDER_CANCELLATION, IntentType.DELIVERY_RESCHEDULE, IntentType.ORDER_REORDER):
         if len(customer_orders_data) == 1:
             target_order_id = customer_orders_data[0]["id"]
         
@@ -338,6 +341,36 @@ def generate_agent_response(
                     "status": "error",
                     "error": error or f"Unable to cancel Order #{target_order_id}."
                 }
+
+    elif intent == IntentType.ORDER_REORDER:
+        if target_order_id is not None:
+            success, error, new_order = reorder_cancelled_order(db, target_order_id)
+            if success and new_order:
+                item_names = [f"{i.product_name} (x{i.quantity})" for i in new_order.items]
+                items_str = ", ".join(item_names) if item_names else "items from your previous order"
+                exp_date = new_order.expected_delivery.strftime("%B %d, %Y") if new_order.expected_delivery else "in 4 business days"
+                tool_results = {
+                    "success": True,
+                    "status": "success",
+                    "customer_name": customer_full_name or customer_name,
+                    "original_order_id": target_order_id,
+                    "new_order_id": new_order.id,
+                    "total_amount": float(new_order.total_amount),
+                    "items_str": items_str,
+                    "expected_delivery_str": exp_date
+                }
+            else:
+                tool_results = {
+                    "success": False,
+                    "status": "error",
+                    "error": error or f"Unable to reorder Order #{target_order_id}."
+                }
+        else:
+            tool_results = {
+                "success": False,
+                "status": "missing_order_id",
+                "error": "Which Order ID would you like me to reorder for you?"
+            }
 
     elif intent == IntentType.DELIVERY_RESCHEDULE and target_order_id is not None and entities.relevant_dates:
         from app.services.order_service import get_order_by_id
