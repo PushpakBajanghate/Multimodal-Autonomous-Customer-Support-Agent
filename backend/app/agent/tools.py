@@ -111,6 +111,10 @@ class CancelOrderInput(BaseModel):
     reason: str = Field(default="Customer requested cancellation", description="Reason for order cancellation.")
     customer_id: Optional[int] = Field(default=None, description="Optional customer ID who owns the order.")
 
+class ReorderOrderInput(BaseModel):
+    order_id: int = Field(..., gt=0, description="Order ID of the cancelled order to reorder.")
+    customer_id: Optional[int] = Field(default=None, description="Optional customer ID who owns the order.")
+
 class UpdateAddressInput(BaseModel):
     customer_id: int = Field(..., gt=0, description="Customer ID requesting the address update.")
     new_address: str = Field(..., min_length=5, description="Full new destination shipping address.")
@@ -400,6 +404,44 @@ def cancel_order(order_id: int, reason: str = "Customer requested cancellation",
     return result
 
 
+@tool(args_schema=ReorderOrderInput)
+def reorder_order(order_id: int, customer_id: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Places a new order duplicating the items from a previously cancelled order.
+    """
+    client = _get_api_client()
+    try:
+        response = client.post(
+            f"/api/v1/orders/{order_id}/reorder",
+            headers=_agent_headers(customer_id=customer_id, is_verified=True)
+        )
+        data = response.json()
+        if response.status_code == 200 and data.get("success"):
+            order_info = data.get("data", {})
+            result = {
+                "success": True,
+                "status": "success",
+                "original_order_id": order_id,
+                "new_order_id": order_info.get("id"),
+                "total_amount": float(order_info.get("total_amount", 0.0)),
+                "expected_delivery": order_info.get("expected_delivery"),
+                "message": f"New Order #{order_info.get('id')} placed successfully for cancelled Order #{order_id}.",
+                "order": order_info
+            }
+        else:
+            reason_err = data.get("reason") if isinstance(data, dict) else f"HTTP {response.status_code}"
+            result = {
+                "success": False,
+                "status": "error",
+                "error": reason_err or f"Reorder failed for Order #{order_id}."
+            }
+    except Exception as exc:
+        result = {"success": False, "status": "error", "error": f"API request error: {str(exc)}"}
+
+    log_tool_execution("reorder_order", {"order_id": order_id, "customer_id": customer_id}, result)
+    return result
+
+
 @tool(args_schema=UpdateAddressInput)
 def update_address(customer_id: int, new_address: str, order_id: Optional[int] = None) -> Dict[str, Any]:
     """
@@ -571,6 +613,7 @@ TOOL_REGISTRY: Dict[str, Any] = {
     "check_refund_eligibility": check_refund_eligibility,
     "create_refund": create_refund,
     "cancel_order": cancel_order,
+    "reorder_order": reorder_order,
     "update_address": update_address,
     "reset_password": reset_password,
     "create_ticket": create_ticket,
@@ -579,6 +622,7 @@ TOOL_REGISTRY: Dict[str, Any] = {
     "get_order_tracking_tool": track_order,
     "process_refund_tool": create_refund,
     "process_cancellation_tool": cancel_order,
+    "reorder_cancelled_order_tool": reorder_order,
     "update_shipping_address_tool": update_address,
     "request_password_reset_tool": reset_password,
     "create_support_ticket_tool": create_ticket
@@ -591,6 +635,7 @@ ALL_AGENT_TOOLS = [
     check_refund_eligibility,
     create_refund,
     cancel_order,
+    reorder_order,
     update_address,
     reset_password,
     create_ticket,

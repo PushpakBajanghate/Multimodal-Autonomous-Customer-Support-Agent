@@ -212,6 +212,13 @@ def plan_actions(state: AgentState) -> Dict[str, Any]:
             {"step": 3, "action": "release_held_funds", "target": order_id},
             {"step": 4, "action": "dispatch_cancellation_receipt", "target": order_id}
         ]
+    elif intent == IntentType.ORDER_REORDER:
+        plan = [
+            {"step": 1, "action": "locate_cancelled_order_items", "target": order_id},
+            {"step": 2, "action": "create_new_order_clone", "target": order_id},
+            {"step": 3, "action": "calculate_new_order_eta_and_total", "target": order_id},
+            {"step": 4, "action": "dispatch_reorder_confirmation", "target": order_id}
+        ]
     elif intent == IntentType.ADDRESS_UPDATE:
         plan = [
             {"step": 1, "action": "validate_destination_address_format", "target": entities.get("new_address")},
@@ -269,6 +276,12 @@ def select_tool(state: AgentState) -> Dict[str, Any]:
         tool_args = {
             "order_id": entities.get("order_id"),
             "reason": entities.get("refund_reason") or "Customer requested cancellation",
+            "customer_id": customer_id
+        }
+    elif intent == IntentType.ORDER_REORDER:
+        tool_name = "reorder_order"
+        tool_args = {
+            "order_id": entities.get("order_id"),
             "customer_id": customer_id
         }
     elif intent == IntentType.ADDRESS_UPDATE:
