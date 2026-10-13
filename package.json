@@ -2,9 +2,6 @@
   "name": "multimodal-autonomous-customer-support-agent",
   "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "frontend"
-  ],
   "scripts": {
     "dev": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
