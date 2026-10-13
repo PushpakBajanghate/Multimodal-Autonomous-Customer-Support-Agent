@@ -78,3 +78,7 @@ macs.db
 # Vercel
 .vercel/
 frontend/.vercel/
+
+# Binaries
+*.exe
+
