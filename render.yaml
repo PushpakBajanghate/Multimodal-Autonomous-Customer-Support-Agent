@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: aura-backend
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.4
+      - key: PROJECT_NAME
+        value: Multimodal Autonomous Customer Support Agent
+      - key: API_V1_STR
+        value: /api/v1
+      - key: SECRET_KEY
+        generateValue: true
+      - key: AGENT_SERVICE_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:///./macs.db
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: VOICE_PROVIDER
+        value: sarvam
+      - key: SARVAM_API_KEY
+        value: sk_06o9xp0e_P4FBQrtZKv16xojDvnz192th
+      - key: SARVAM_TTS_MODEL
+        value: bulbul:v3
+      - key: SARVAM_HINDI_SPEAKER
+        value: ritu
+      - key: SARVAM_ENGLISH_SPEAKER
+        value: shubh

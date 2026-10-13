@@ -7,8 +7,9 @@ import {
   VoiceSynthesisResponseData
 } from '../types/chat';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000/api/v1';
-export const HEALTH_URL = process.env.NEXT_PUBLIC_HEALTH_URL || 'http://localhost:8000/health';
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api/backend/v1';
+export const HEALTH_URL = process.env.NEXT_PUBLIC_HEALTH_URL || '/api/backend/health';
+
 
 const TOKEN_STORAGE_KEY = 'aura_access_token';
 
