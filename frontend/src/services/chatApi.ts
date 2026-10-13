@@ -7,8 +7,18 @@ import {
   VoiceSynthesisResponseData
 } from '../types/chat';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api/backend/v1';
-export const HEALTH_URL = process.env.NEXT_PUBLIC_HEALTH_URL || '/api/backend/health';
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ||
+  (typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:8000/api/v1"
+    : "/api/backend/v1");
+
+export const HEALTH_URL =
+  process.env.NEXT_PUBLIC_HEALTH_URL ||
+  (typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:8000/health"
+    : "/api/backend/health");
+
 
 
 const TOKEN_STORAGE_KEY = 'aura_access_token';
