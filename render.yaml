@@ -1,12 +1,14 @@
 services:
   - type: web
     name: aura-backend
-    runtime: python
+    env: python
     region: oregon
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.4
