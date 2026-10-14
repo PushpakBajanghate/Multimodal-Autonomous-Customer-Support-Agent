@@ -138,6 +138,7 @@ sequenceDiagram
 | **BUG-13** | Response Synthesis | `app.agent.graph` | Incomplete context in LLM response generation | `generate_response` omitted `customer_orders`, `missing_entities`, and `clarification_prompt` | Passed all contextual parameters to both conversational LLM and intelligent offline response engines |
 | **BUG-14** | Politeness & Greetings | `app.agent.graph` | Generic greetings lacked agent identity | Direct LLM greetings occasionally omitted "Aura" bot identity in greeting responses | Added explicit greeting detection to introduce Aura in both English and Hindi/Hinglish |
 | **BUG-15** | Channel Orchestration | `app.agent.responder` | Chat and Voice bypassed LangGraph state machine | `generate_agent_response` ran procedural logic instead of invoking `agent_graph` | Wired `generate_agent_response` to invoke `agent_graph.invoke(...)` with automatic recovery fallback |
+| **BUG-16** | CI Pipeline | `.github/workflows/ci.yml`, `scripts/seed.py` | `backend-ci` failed on `table customers already exists` | Missing `DATABASE_URL` in CI env routed to SQLite where `seed.py` collided with alembic tables | Wired `DATABASE_URL: postgresql+psycopg://...` in CI env and guarded `Base.metadata.create_all` in `seed.py` with safe exception handling |
 
 ---
 

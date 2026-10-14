@@ -7,6 +7,12 @@ import hashlib
 # Add backend directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from app.core.config import settings
 from app.models import (
     Customer, Order, OrderItem, Refund, Cancellation,
@@ -288,7 +294,10 @@ def seed_database():
 
     # Create all tables if they don't exist
     import app.models
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        print(f"Notice during table creation (tables may already exist): {exc}")
 
     Session = sessionmaker(bind=engine)
     session = Session()

@@ -29,6 +29,7 @@ jobs:
           --health-retries 5
 
     env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres_secure_password_change_me@localhost:5435/customer_support_db
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5435
       POSTGRES_USER: postgres
@@ -36,6 +37,7 @@ jobs:
       POSTGRES_DB: customer_support_db
       SECRET_KEY: test_secret_jwt_key_for_ci_testing_purposes_only
       AGENT_SERVICE_SECRET: agent_internal_service_secret_key_2026
+      LLM_PROVIDER: mock
 
     steps:
       - name: Checkout Code
