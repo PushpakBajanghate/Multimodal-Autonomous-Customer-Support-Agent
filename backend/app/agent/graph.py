@@ -19,6 +19,7 @@ class AgentState(TypedDict, total=False):
     """
     # 1. Customer Context & Channel
     customer_id: Optional[int]
+    conversation_id: Optional[int]
     customer_context: Dict[str, Any]
     channel: str  # "chat", "voice", "email"
     auth_verified: bool
@@ -63,7 +64,7 @@ class AgentState(TypedDict, total=False):
 
 def normalize_input(state: AgentState) -> Dict[str, Any]:
     """Node 1: Sanitizes and normalizes the incoming user utterance."""
-    raw = state.get("raw_input", "")
+    raw = state.get("raw_input") or ""
     cleaned = raw.strip()
     trajectory = list(state.get("trajectory", []))
     trajectory.append("normalize_input")
@@ -80,13 +81,41 @@ def load_memory(state: AgentState) -> Dict[str, Any]:
     trajectory.append("load_memory")
 
     customer_id = state.get("customer_id")
-    cust_ctx = state.get("customer_context", {})
+    cust_ctx = dict(state.get("customer_context") or {})
     if customer_id and not cust_ctx:
         cust_ctx = {
             "customer_id": customer_id,
             "tier": "standard",
-            "open_tickets": 0
+            "open_tickets": 0,
+            "orders": []
         }
+        try:
+            from app.db.session import SessionLocal
+            from app.models.models import Customer, Order, Ticket
+            db = SessionLocal()
+            try:
+                db_customer = db.query(Customer).filter(Customer.id == customer_id).first()
+                if db_customer:
+                    cust_ctx["name"] = db_customer.name
+                    cust_ctx["email"] = db_customer.email
+                    open_tickets = db.query(Ticket).filter(Ticket.customer_id == customer_id, Ticket.status == "open").count()
+                    cust_ctx["open_tickets"] = open_tickets
+                    db_orders = db.query(Order).filter(Order.customer_id == customer_id).order_by(Order.order_date.desc()).all()
+                    orders_data = []
+                    for o in db_orders:
+                        exp_str = o.expected_delivery.strftime("%B %d, %Y") if o.expected_delivery else "Pending"
+                        orders_data.append({
+                            "id": o.id,
+                            "status": o.status,
+                            "total_amount": float(o.total_amount) if o.total_amount else 0.0,
+                            "expected_delivery_str": exp_str,
+                            "is_editable": o.is_editable
+                        })
+                    cust_ctx["orders"] = orders_data
+            finally:
+                db.close()
+        except Exception:
+            pass
 
     return {
         "customer_context": cust_ctx,
@@ -103,14 +132,31 @@ def classify_intent_entities(state: AgentState) -> Dict[str, Any]:
     history = state.get("conversation_history", [])
 
     analysis = analyze_utterance(text, conversation_context=history)
+    entities_data = analysis.entities.model_dump()
+
+    # Extract customer name from customer context if not directly mentioned
+    cust_ctx = state.get("customer_context") or {}
+    customer_name = entities_data.get("customer_name")
+    if not customer_name and cust_ctx.get("name"):
+        customer_name = cust_ctx["name"].split()[0]
+        entities_data["customer_name"] = customer_name
+
+    clarification_prompt = analysis.clarification_prompt
+    from app.services.voice_service import detect_voice_language
+    preferred_language = detect_voice_language(text, "auto")
+    if preferred_language.startswith("hi"):
+        from app.agent.responder import _hindi_clarification
+        hindi_prompt = _hindi_clarification(analysis.intent, analysis.missing_entities, customer_name)
+        if hindi_prompt:
+            clarification_prompt = hindi_prompt
 
     return {
         "intent": analysis.intent,
         "intent_confidence": analysis.confidence,
-        "entities": analysis.entities.model_dump(),
+        "entities": entities_data,
         "is_ambiguous": analysis.is_ambiguous,
         "missing_entities": analysis.missing_entities,
-        "clarification_prompt": analysis.clarification_prompt,
+        "clarification_prompt": clarification_prompt,
         "confidence": analysis.confidence,
         "trajectory": trajectory
     }
@@ -121,7 +167,23 @@ def check_ambiguity(state: AgentState) -> Dict[str, Any]:
     trajectory = list(state.get("trajectory", []))
     trajectory.append("check_ambiguity")
 
+    is_ambiguous = state.get("is_ambiguous", False)
+    entities = dict(state.get("entities") or {})
+    missing_entities = list(state.get("missing_entities") or [])
+    intent = state.get("intent", IntentType.UNKNOWN)
+    cust_orders = state.get("customer_context", {}).get("orders", [])
+
+    # If order_id is missing but customer has exactly 1 order in context, auto-resolve it
+    if is_ambiguous and "order_id" in missing_entities and len(cust_orders) == 1 and intent in (IntentType.ORDER_TRACKING, IntentType.REFUND_REQUEST, IntentType.ORDER_CANCELLATION):
+        entities["order_id"] = cust_orders[0]["id"]
+        missing_entities.remove("order_id")
+        if not missing_entities:
+            is_ambiguous = False
+
     return {
+        "is_ambiguous": is_ambiguous,
+        "entities": entities,
+        "missing_entities": missing_entities,
         "trajectory": trajectory
     }
 
@@ -144,6 +206,13 @@ def clarification_question(state: AgentState) -> Dict[str, Any]:
     intent = state.get("intent", IntentType.UNKNOWN)
     clarification = state.get("clarification_prompt")
     missing = state.get("missing_entities", [])
+
+    # If a tailored prompt is already prepared for missing entities, use it directly
+    if clarification and missing:
+        return {
+            "final_response": clarification,
+            "trajectory": trajectory
+        }
 
     from app.agent.llm_client import (
         generate_conversational_llm_response,
@@ -238,6 +307,13 @@ def plan_actions(state: AgentState) -> Dict[str, Any]:
             {"step": 2, "action": "create_escalation_ticket_record", "target": "support_queue"},
             {"step": 3, "action": "route_to_human_specialist", "target": "priority_tier"}
         ]
+    elif intent == IntentType.OUTBOUND_CALL_REQUEST:
+        phone_target = entities.get("phone") or "customer_phone"
+        plan = [
+            {"step": 1, "action": "validate_contact_phone_number", "target": phone_target},
+            {"step": 2, "action": "dispatch_outbound_voice_call", "target": phone_target},
+            {"step": 3, "action": "record_call_session_telemetry", "target": "voice_service"}
+        ]
     else:
         plan = [
             {"step": 1, "action": "generate_general_greeting_and_capability_overview", "target": "user"}
@@ -258,23 +334,35 @@ def select_tool(state: AgentState) -> Dict[str, Any]:
     entities = state.get("entities", {})
     customer_id = state.get("customer_id") or 1
 
+    # Sanitize and safely resolve order_id
+    raw_order_id = entities.get("order_id")
+    order_id: Optional[int] = None
+    if raw_order_id is not None:
+        try:
+            order_id = int(raw_order_id)
+        except (ValueError, TypeError):
+            order_id = None
+
+    if order_id is None and len(state.get("customer_context", {}).get("orders", [])) == 1:
+        order_id = state["customer_context"]["orders"][0]["id"]
+
     tool_name = "general_support_responder"
     tool_args: Dict[str, Any] = {}
 
     if intent == IntentType.ORDER_TRACKING:
         tool_name = "track_order"
-        tool_args = {"order_id": entities.get("order_id"), "customer_id": customer_id}
+        tool_args = {"order_id": order_id, "customer_id": customer_id}
     elif intent == IntentType.REFUND_REQUEST:
         tool_name = "create_refund"
         tool_args = {
-            "order_id": entities.get("order_id"),
+            "order_id": order_id,
             "reason": entities.get("refund_reason") or "Customer requested refund",
             "customer_id": customer_id
         }
     elif intent == IntentType.ORDER_CANCELLATION:
         tool_name = "cancel_order"
         tool_args = {
-            "order_id": entities.get("order_id"),
+            "order_id": order_id,
             "reason": entities.get("refund_reason") or "Customer requested cancellation",
             "customer_id": customer_id
         }
@@ -289,7 +377,7 @@ def select_tool(state: AgentState) -> Dict[str, Any]:
         tool_args = {
             "customer_id": customer_id,
             "new_address": entities.get("new_address"),
-            "order_id": entities.get("order_id")
+            "order_id": order_id
         }
     elif intent == IntentType.PASSWORD_RESET:
         tool_name = "reset_password"
@@ -301,6 +389,13 @@ def select_tool(state: AgentState) -> Dict[str, Any]:
             "channel": state.get("channel", "chat"),
             "intent": "ticket_creation",
             "escalation_reason": state.get("normalized_input") or "Customer requested ticket creation"
+        }
+    elif intent == IntentType.OUTBOUND_CALL_REQUEST:
+        tool_name = "initiate_outbound_call"
+        tool_args = {
+            "phone_number": entities.get("phone"),
+            "customer_id": customer_id,
+            "conversation_id": state.get("conversation_id")
         }
 
     return {
@@ -320,13 +415,28 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
     tool_name = state.get("selected_tool")
     tool_args = dict(state.get("tool_args", {}))
     customer_id = state.get("customer_id")
-    if customer_id and "customer_id" not in tool_args:
-        tool_args["customer_id"] = customer_id
 
     # Filter None values from tool_args where appropriate
     clean_args = {k: v for k, v in tool_args.items() if v is not None}
+    if customer_id and not clean_args.get("customer_id"):
+        clean_args["customer_id"] = customer_id
 
-    if tool_name and tool_name in TOOL_REGISTRY:
+    if tool_name == "initiate_outbound_call":
+        phone_num = clean_args.get("phone_number")
+        if phone_num:
+            tool_result = {
+                "success": True,
+                "status": "call_initiated",
+                "phone_number": phone_num,
+                "call_sid": "CA_MOCK_OUTBOUND_CALL_SUCCESS"
+            }
+        else:
+            tool_result = {
+                "success": False,
+                "status": "error",
+                "error": "Phone number required for outbound voice call."
+            }
+    elif tool_name and tool_name in TOOL_REGISTRY:
         tool_func = TOOL_REGISTRY[tool_name]
         try:
             if hasattr(tool_func, "invoke"):
@@ -439,7 +549,24 @@ def escalate(state: AgentState) -> Dict[str, Any]:
         else:
             create_ticket(**ticket_payload)
     except Exception:
-        pass
+        try:
+            from app.db.session import SessionLocal
+            from app.services.ticket_service import create_escalation_ticket
+            db = SessionLocal()
+            try:
+                create_escalation_ticket(
+                    db=db,
+                    customer_id=customer_id,
+                    channel=channel,
+                    intent=intent_str,
+                    actions_attempted={"plan": state.get("plan", [])},
+                    tool_results=state.get("tool_results", {}),
+                    escalation_reason=reason
+                )
+            finally:
+                db.close()
+        except Exception:
+            pass
 
     response = f"I am escalating your request to our senior customer support team ({reason}). An agent will follow up shortly."
 
@@ -459,6 +586,9 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
     raw_input = state.get("normalized_input", "")
     entities = state.get("entities", {})
     customer_name = entities.get("customer_name")
+    customer_orders = state.get("customer_context", {}).get("orders", [])
+    missing = state.get("missing_entities", [])
+    clarification = state.get("clarification_prompt")
 
     from app.agent.llm_client import (
         generate_conversational_llm_response,
@@ -470,7 +600,10 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
         user_message=raw_input,
         tool_results=tool_results,
         conversation_context=state.get("conversation_history"),
-        customer_name=customer_name
+        customer_name=customer_name,
+        customer_orders=customer_orders,
+        missing_entities=missing,
+        clarification_prompt=clarification
     )
 
     if not llm_resp:
@@ -478,7 +611,10 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
             intent=intent,
             user_message=raw_input,
             tool_results=tool_results,
-            customer_name=customer_name
+            customer_name=customer_name,
+            customer_orders=customer_orders,
+            missing_entities=missing,
+            clarification_prompt=clarification
         )
 
     return {
