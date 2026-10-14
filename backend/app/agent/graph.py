@@ -605,7 +605,6 @@ def escalate(state: AgentState) -> Dict[str, Any]:
     escalation_context["escalated"] = True
 
     customer_name = state.get("entities", {}).get("customer_name") or (state.get("customer_context") or {}).get("name")
-    customer_orders = state.get("customer_context", {}).get("orders", [])
 
     llm_resp = generate_conversational_llm_response(
         intent=intent_str,
@@ -613,12 +612,14 @@ def escalate(state: AgentState) -> Dict[str, Any]:
         tool_results=escalation_context,
         conversation_context=state.get("conversation_history"),
         customer_name=customer_name,
-        customer_orders=customer_orders
+        customer_orders=[]
     )
 
     if not llm_resp or len(llm_resp.strip()) < 10:
         greeting = f"Hello {customer_name}! " if customer_name else "Hello! "
         llm_resp = f"{greeting}I am escalating your request to our senior customer support team regarding: {reason}. A support specialist will review your details and follow up with you shortly."
+    elif "escalat" not in llm_resp.lower():
+        llm_resp = f"I am escalating your request to our senior customer support team regarding: {reason}. {llm_resp}"
 
     return {
         "final_response": llm_resp,
