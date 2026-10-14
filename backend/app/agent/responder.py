@@ -190,6 +190,16 @@ def generate_agent_response(
             pass
 
     if intent == IntentType.UNKNOWN and _is_plain_greeting(message):
+        llm_greeting = generate_conversational_llm_response(
+            intent=intent.value,
+            user_message=message,
+            tool_results=None,
+            conversation_context=conversation_history,
+            customer_name=customer_name,
+            customer_orders=customer_orders_data
+        )
+        if llm_greeting:
+            return llm_greeting
         if preferred_language.startswith("hi"):
             return _hindi_greeting(customer_name)
         return (
@@ -545,9 +555,6 @@ def generate_agent_response(
                     f"Hello {customer_name}! " if customer_name else "Hello! "
                 ) + "I would be happy to give you a call! Please provide your phone number with your country code (e.g. +91...)."
 
-    if analysis.clarification_prompt and analysis.missing_entities and not tool_results:
-        return analysis.clarification_prompt
-
     if intent == IntentType.OUTBOUND_CALL_REQUEST and tool_results and tool_results.get("phone_number"):
         return generate_intelligent_offline_response(
             intent=intent,
@@ -573,6 +580,9 @@ def generate_agent_response(
 
     if llm_reply:
         return llm_reply
+
+    if analysis.clarification_prompt and analysis.missing_entities and not tool_results:
+        return analysis.clarification_prompt
 
     # 5. Intelligent Dynamic Contextual Fallback Brain (Non-hardcoded)
     return generate_intelligent_offline_response(

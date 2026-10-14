@@ -29,6 +29,18 @@ ACTIVE_GEMINI_MODELS = [
     "gemma-4-26b-a4b-it"
 ]
 
+
+def _get_active_gemini_models() -> List[str]:
+    """Returns Gemini models in order of priority, with user-configured GEMINI_MODEL first."""
+    models = list(ACTIVE_GEMINI_MODELS)
+    preferred = getattr(settings, "GEMINI_MODEL", None)
+    if preferred:
+        preferred = preferred.strip()
+        if preferred in models:
+            models.remove(preferred)
+        models.insert(0, preferred)
+    return models
+
 _GEMINI_KEY_VALID: Optional[bool] = None
 _OPENAI_KEY_VALID: Optional[bool] = None
 _MODEL_COOLDOWNS: Dict[str, float] = {}
@@ -296,7 +308,7 @@ def execute_llm_intent_pipeline(
         return heuristic
 
     # Try active Gemini models in priority order
-    for model_name in ACTIVE_GEMINI_MODELS:
+    for model_name in _get_active_gemini_models():
         res = call_gemini_model_intent(model_name, clean_text, conversation_context, timeout=3.5)
         if res:
             res.reasoning = f"[{model_name}] {res.reasoning or 'Intent classified'}"
@@ -362,13 +374,14 @@ def generate_conversational_llm_response(
 
     language_instruction = (
         "Respond in fluent, warm, conversational Hindi/Hinglish when the customer asks in Hindi or Hinglish. "
+        "When asking for clarification or Order ID in Hindi/Hinglish, politely include 'kripya' (e.g., 'Kripya apna Order ID bhejiye'). "
         "Respond in natural, empathetic English when the customer asks in English."
     )
 
     system_prompt = (
         "You are Aura, an empathetic, conversational, articulate, and genuinely helpful AI customer support chatbot (powered by Google Gemini).\n\n"
         "Core Directives:\n"
-        "1. Speak naturally like a real human customer support agent in conversational chatbot style.\n"
+        "1. Speak naturally like a real human customer support agent in conversational chatbot style. When greeting a customer, always introduce yourself warmly as Aura (e.g. 'I am Aura, your customer support assistant').\n"
         "2. Address the customer warmly by their actual name from the context (e.g. 'Hi Komal'). If they introduce themselves, acknowledge it gracefully.\n"
         "3. STRICTLY GROUND YOUR ANSWER ON VERIFIED DATABASE RECORDS ONLY:\n"
         "   - NEVER invent, fabricate, or hallucinate order IDs, tracking numbers, carrier names, or any data not present in 'verified_database_records'.\n"
@@ -382,7 +395,12 @@ def generate_conversational_llm_response(
         "   - If an order is DELIVERED: confirm delivery with carrier and tracking info.\n"
         "   - If an order is IN TRANSIT or PLACED: share the live tracking coordinates, carrier name, tracking number, and expected delivery date with warmth.\n"
         "   - If refund was approved: state the refund amount and 3-5 business day timeline.\n"
+        "   - If refund cannot be processed (e.g. order is shipped or not delivered): explain that refunds are only possible after delivery or upon cancellation, state the order's current shipping status and expected delivery date, and offer to assist with tracking or returning once delivered.\n"
+        "   - If cancellation cannot be processed (e.g. order has already shipped): explain that cancellations are only allowed prior to shipping, confirm the shipment status and ETA, and suggest returning or refusing delivery upon arrival.\n"
+        "   - If address update cannot be processed (e.g. order is shipped or locked): explain that the shipment is already in transit with the carrier and cannot be redirected automatically, and provide guidance.\n"
         "   - If delivery was rescheduled: confirm the new date warmly.\n"
+        "   - If the request is escalated or a ticket was created: state clearly to the customer: 'I am escalating your request to our senior customer support team' and explain the reason warmly, assuring them that our team will follow up to review and resolve this, and offer to help with any other inquiries in the meantime.\n"
+        "   - Always explicitly mention the Order ID (e.g. Order #9) when referring to any specific customer order.\n"
         "4. If no database records are found and no customer could be identified, ask the customer to provide their full name, email, or customer ID so you can look them up.\n"
         "5. NEVER output robotic bullet lists, rigid form menus, or canned boilerplate. Talk directly to the user as a real conversational assistant.\n"
         f"6. {language_instruction}"
@@ -418,7 +436,7 @@ def generate_conversational_llm_response(
         )
 
     # 1. Try active Gemini models in priority order
-    for model_name in ACTIVE_GEMINI_MODELS:
+    for model_name in _get_active_gemini_models():
         reply = generate_gemini_response_sync(model_name, system_prompt, user_prompt, timeout=5.0)
         if reply and len(reply.strip()) > 10:
             if expected_oid is not None and str(expected_oid) not in reply:
@@ -487,6 +505,12 @@ def generate_intelligent_offline_response(
         greeting = f"Namaste {customer_name}! " if customer_name else "Namaste! "
     else:
         greeting = f"Hi {customer_name}! " if customer_name else "Hello! "
+
+    if tool_results and tool_results.get("escalated"):
+        esc_reason = tool_results.get("escalation_reason", "inquiry review")
+        if is_hindi:
+            return f"{greeting}Main aapki request hamari senior customer support team ko escalate kar rahi hoon ({esc_reason}). Hamare support agent jald hi aapse sampark karenge."
+        return f"{greeting}I am escalating your request to our senior customer support team regarding: {esc_reason}. A senior support agent will follow up with you shortly."
 
     if clarification_prompt:
         return clarification_prompt

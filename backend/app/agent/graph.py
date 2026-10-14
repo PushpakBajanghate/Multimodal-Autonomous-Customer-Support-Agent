@@ -206,13 +206,7 @@ def clarification_question(state: AgentState) -> Dict[str, Any]:
     intent = state.get("intent", IntentType.UNKNOWN)
     clarification = state.get("clarification_prompt")
     missing = state.get("missing_entities", [])
-
-    # If a tailored prompt is already prepared for missing entities, use it directly
-    if clarification and missing:
-        return {
-            "final_response": clarification,
-            "trajectory": trajectory
-        }
+    cust_orders = state.get("customer_context", {}).get("orders", [])
 
     from app.agent.llm_client import (
         generate_conversational_llm_response,
@@ -225,19 +219,24 @@ def clarification_question(state: AgentState) -> Dict[str, Any]:
         tool_results=None,
         conversation_context=state.get("conversation_history"),
         customer_name=customer_name,
+        customer_orders=cust_orders,
         missing_entities=missing,
         clarification_prompt=clarification
     )
 
     if not llm_resp:
-        llm_resp = generate_intelligent_offline_response(
-            intent=intent,
-            user_message=raw_input,
-            tool_results=None,
-            customer_name=customer_name,
-            missing_entities=missing,
-            clarification_prompt=clarification
-        )
+        if clarification:
+            llm_resp = clarification
+        else:
+            llm_resp = generate_intelligent_offline_response(
+                intent=intent,
+                user_message=raw_input,
+                tool_results=None,
+                customer_name=customer_name,
+                customer_orders=cust_orders,
+                missing_entities=missing,
+                clarification_prompt=clarification
+            )
 
     return {
         "final_response": llm_resp,
@@ -397,6 +396,11 @@ def select_tool(state: AgentState) -> Dict[str, Any]:
             "customer_id": customer_id,
             "conversation_id": state.get("conversation_id")
         }
+    elif intent == IntentType.ACCOUNT_INFO:
+        tool_name = "get_customer"
+        tool_args = {
+            "customer_id": customer_id
+        }
 
     return {
         "selected_tool": tool_name,
@@ -486,8 +490,27 @@ def validate_result(state: AgentState) -> Dict[str, Any]:
     risk_score = 0.05
 
     if not is_success:
-        if retry_count < 1:
-            # Allow max 1 automatic retry
+        error_msg = str(tool_results.get("error", "")).lower()
+        is_domain_policy_rejection = any(term in error_msg for term in [
+            "current status is",
+            "already shipped",
+            "only permitted",
+            "cannot be edited",
+            "30-day",
+            "already been cancelled",
+            "not eligible",
+            "cancellation rejected",
+            "refund request rejected",
+            "address change rejected"
+        ])
+
+        if is_domain_policy_rejection:
+            # Domain policy rejection: The tool verified database state.
+            # Route to generate_response so conversational LLM explains the condition in real time!
+            needs_retry = False
+            needs_escalation = False
+        elif retry_count < 1:
+            # Unexpected execution failure -> Allow max 1 automatic retry
             needs_retry = True
             risk_score = 0.50
         else:
@@ -572,10 +595,33 @@ def escalate(state: AgentState) -> Dict[str, Any]:
         except Exception:
             pass
 
-    response = f"I am escalating your request to our senior customer support team ({reason}). An agent will follow up shortly."
+    from app.agent.llm_client import (
+        generate_conversational_llm_response,
+        generate_intelligent_offline_response
+    )
+
+    escalation_context = dict(state.get("tool_results") or {})
+    escalation_context["escalation_reason"] = reason
+    escalation_context["escalated"] = True
+
+    customer_name = state.get("entities", {}).get("customer_name") or (state.get("customer_context") or {}).get("name")
+    customer_orders = state.get("customer_context", {}).get("orders", [])
+
+    llm_resp = generate_conversational_llm_response(
+        intent=intent_str,
+        user_message=state.get("normalized_input", ""),
+        tool_results=escalation_context,
+        conversation_context=state.get("conversation_history"),
+        customer_name=customer_name,
+        customer_orders=customer_orders
+    )
+
+    if not llm_resp or len(llm_resp.strip()) < 10:
+        greeting = f"Hello {customer_name}! " if customer_name else "Hello! "
+        llm_resp = f"{greeting}I am escalating your request to our senior customer support team regarding: {reason}. A support specialist will review your details and follow up with you shortly."
 
     return {
-        "final_response": response,
+        "final_response": llm_resp,
         "trajectory": trajectory
     }
 
@@ -596,20 +642,6 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
 
     from app.services.voice_service import detect_voice_language
     from app.agent.responder import _is_plain_greeting, _hindi_greeting
-
-    if intent == IntentType.UNKNOWN and _is_plain_greeting(raw_input):
-        preferred_lang = detect_voice_language(raw_input, "auto")
-        if preferred_lang.startswith("hi"):
-            return {
-                "final_response": _hindi_greeting(customer_name),
-                "trajectory": trajectory
-            }
-        greeting = f"Hello {customer_name}! " if customer_name else "Hello! "
-        return {
-            "final_response": f"{greeting}I am Aura, your customer support assistant. How can I help you today with orders, refunds, cancellations, delivery, or account issues?",
-            "trajectory": trajectory
-        }
-
     from app.agent.llm_client import (
         generate_conversational_llm_response,
         generate_intelligent_offline_response
@@ -627,15 +659,23 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
     )
 
     if not llm_resp:
-        llm_resp = generate_intelligent_offline_response(
-            intent=intent,
-            user_message=raw_input,
-            tool_results=tool_results,
-            customer_name=customer_name,
-            customer_orders=customer_orders,
-            missing_entities=missing,
-            clarification_prompt=clarification
-        )
+        if intent == IntentType.UNKNOWN and _is_plain_greeting(raw_input):
+            preferred_lang = detect_voice_language(raw_input, "auto")
+            if preferred_lang.startswith("hi"):
+                llm_resp = _hindi_greeting(customer_name)
+            else:
+                greeting = f"Hello {customer_name}! " if customer_name else "Hello! "
+                llm_resp = f"{greeting}I am Aura, your customer support assistant. How can I help you today with orders, refunds, cancellations, delivery, or account issues?"
+        else:
+            llm_resp = generate_intelligent_offline_response(
+                intent=intent,
+                user_message=raw_input,
+                tool_results=tool_results,
+                customer_name=customer_name,
+                customer_orders=customer_orders,
+                missing_entities=missing,
+                clarification_prompt=clarification
+            )
 
     return {
         "final_response": llm_resp,
