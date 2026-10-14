@@ -3,9 +3,12 @@ Agent Response Engine: Orchestrates NLU intent analysis, domain service executio
 and intelligent conversational responses powered by LLM Reasoning Brain.
 """
 
+import logging
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlencode
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.models import Customer, Order
 from app.agent.intent import analyze_utterance
@@ -79,7 +82,28 @@ def generate_agent_response(
     """
     Executes real intent recognition, entity extraction, domain business logic,
     and returns a contextual, dynamic, empathetic LLM agent response.
+    Orchestrated by unified LangGraph state machine with automatic recovery.
     """
+    try:
+        from app.agent.graph import agent_graph, AgentState
+        state: AgentState = {
+            "customer_id": customer_id,
+            "conversation_id": conversation_id,
+            "channel": "chat",
+            "raw_input": message,
+            "conversation_history": [
+                {"sender": m.get("sender", "user"), "text": m.get("text", "")}
+                for m in (conversation_history or [])
+            ],
+            "trajectory": []
+        }
+        final_state = agent_graph.invoke(state)
+        graph_reply = final_state.get("final_response")
+        if graph_reply:
+            return graph_reply
+    except Exception as exc:
+        logger.warning(f"LangGraph execution fallback triggered: {exc}")
+
     # 1. Run LLM / NLU Intent Recognition & Entity Extraction
     analysis: AnalysisResult = analyze_utterance(
         text=message,
