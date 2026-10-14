@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     SARVAM_SAMPLE_RATE: int = Field(default=24000)
 
     ELEVENLABS_API_KEY: str | None = Field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY"))
+    ELEVENLABS_AGENT_ID: str | None = Field(default_factory=lambda: os.getenv("ELEVENLABS_AGENT_ID"))
     ELEVENLABS_TTS_URL: str = Field(default="https://api.elevenlabs.io/v1/text-to-speech")
     ELEVENLABS_VOICE_ID: str = Field(default="EXAVITQu4vr4xnSDxMaL")
     ELEVENLABS_MODEL_ID: str = Field(default="eleven_multilingual_v2")

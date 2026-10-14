@@ -1,10 +1,11 @@
-import base64
+import time
+from collections import defaultdict, deque
 from typing import Dict, Optional
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_actor
@@ -21,6 +22,55 @@ from app.services.voice_service import build_twiml, detect_voice_language, synth
 
 router = APIRouter()
 _AUDIO_CACHE: Dict[str, tuple[bytes, str]] = {}
+_SESSION_REQUESTS: dict[str, deque[float]] = defaultdict(deque)
+
+
+@router.post("/elevenlabs/session")
+async def create_elevenlabs_session(request: Request, actor=Depends(get_current_actor)):
+    """Mint a short-lived ElevenLabs session URL without exposing the API key."""
+    # Bound anonymous customer-session token use as well as normal signed-in use.
+    now = time.monotonic()
+    if len(_SESSION_REQUESTS) > 1000:
+        stale = [ip for ip, timestamps in _SESSION_REQUESTS.items() if not timestamps or now - timestamps[-1] >= 60]
+        for ip in stale:
+            _SESSION_REQUESTS.pop(ip, None)
+    client_ip = request.client.host if request.client else "unknown"
+    recent = _SESSION_REQUESTS[client_ip]
+    while recent and now - recent[0] >= 60:
+        recent.popleft()
+    if len(recent) >= 10:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many voice session requests. Please wait a minute and try again.",
+        )
+    recent.append(now)
+
+    if not settings.ELEVENLABS_API_KEY or not settings.ELEVENLABS_AGENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Browser voice support is not configured. Please use text support instead.",
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                "https://api.elevenlabs.io/v1/convai/conversation/get-signed-url",
+                params={"agent_id": settings.ELEVENLABS_AGENT_ID},
+                headers={"xi-api-key": settings.ELEVENLABS_API_KEY},
+            )
+            response.raise_for_status()
+            data = response.json()
+            signed_url = data.get("signed_url") if isinstance(data, dict) else None
+            if not isinstance(signed_url, str) or not signed_url.startswith("wss://"):
+                raise ValueError("ElevenLabs returned an invalid session URL")
+    except (httpx.HTTPError, ValueError):
+        # Do not relay upstream error bodies, which may contain sensitive metadata.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not connect to the voice service. Please try text support or retry later.",
+        )
+
+    return JSONResponse({"signed_url": signed_url}, headers={"Cache-Control": "no-store"})
 
 
 def _public_api_url(request: Optional[Request] = None) -> str:

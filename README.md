@@ -8,7 +8,7 @@ A state-of-the-art multimodal autonomous customer support platform with real-tim
 
 | Service | URL | Description |
 | :--- | :--- | :--- |
-| Frontend Web App | [http://localhost:3000](http://localhost:3000) | Next.js chat UI, after `make frontend` or `make dev` |
+| Frontend Web App | [http://localhost:3000](http://localhost:3000) | Next.js chat UI and live browser voice support, after `make frontend` or `make dev` |
 | FastAPI Backend | [http://localhost:8000](http://localhost:8000) | REST service, after `make backend` or `make dev` |
 | API Docs | [http://localhost:8000/docs](http://localhost:8000/docs) | Available while the backend is running |
 | Health Check | [http://localhost:8000/health](http://localhost:8000/health) | Available while the backend is running |
@@ -105,6 +105,14 @@ The backend implements a dual-actor security model with role separation, lightwe
 ---
 
 ## 💻 Running the Application Locally
+
+### Browser voice support (ElevenLabs Conversational AI)
+
+The **Talk to AI Agent** dialog starts a real-time ElevenLabs conversation in the browser. It does not place a phone call and does not use Twilio. The prior voice dialog used browser speech recognition and speech synthesis around the text-chat endpoint; its “connected” display did not represent an ElevenLabs conversation, which caused the integration mismatch.
+
+Configure `ELEVENLABS_API_KEY` and `ELEVENLABS_AGENT_ID` in the backend environment. Enable signed URL authentication for the agent in ElevenLabs. The browser requests a short-lived signed session URL through the authenticated backend endpoint at `POST /api/v1/voice/elevenlabs/session`; the API key never reaches the frontend. The customer's name, optional phone number, question, and language preference are supplied as ElevenLabs dynamic variables, and the question is sent as the first user turn. Add and reference `customer_name`, `customer_phone`, `customer_question`, and `preferred_language` in the agent prompt if it should personalize its greeting and responses with them. The agent must be configured to handle English, Hindi, and/or Hinglish as desired.
+
+Voice starts only after the customer submits the form and grants microphone permission. If credentials, agent access, microphone access, or network connectivity are unavailable, the dialog reports the issue and the existing text support remains available. A small in-process rate limit protects the signed URL endpoint; deployments with multiple backend workers should also apply a shared rate limit at the gateway.
 
 ### One-command development
 

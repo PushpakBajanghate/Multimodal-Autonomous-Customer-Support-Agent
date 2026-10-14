@@ -36,7 +36,6 @@ export default function CustomerSupportPage() {
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const handleVoiceSend = async (spokenText: string) => sendMessage(spokenText);
   const handleSupportMessage = (text: string) => {
     setSearchQuery('');
     void sendMessage(text);
@@ -100,8 +99,6 @@ export default function CustomerSupportPage() {
       <VoiceSimulationModal
         isOpen={isVoiceModalOpen}
         onClose={() => setIsVoiceModalOpen(false)}
-        onSendVoiceTranscript={handleVoiceSend}
-        conversationId={conversationId}
       />
       <ReasoningDrawer
         isOpen={isReasoningDrawerOpen}

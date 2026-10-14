@@ -282,6 +282,30 @@ export async function synthesizeVoice(
   }
 }
 
+/** Gets a short-lived private-agent session URL; the ElevenLabs API key stays server-side. */
+export async function getElevenLabsSessionUrl(signal?: AbortSignal): Promise<string> {
+  try {
+    const res = await authFetch(`${API_BASE}/voice/elevenlabs/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      cache: 'no-store',
+      signal
+    });
+    const data = await res.json().catch(() => null);
+    const signedUrl = data?.signed_url;
+    if (!res.ok || typeof signedUrl !== 'string' || !signedUrl.startsWith('wss://')) {
+      const reason = data?.detail?.reason || data?.reason || data?.detail || 'Voice service is unavailable.';
+      throw new ChatApiError(reason, res.status, reason);
+    }
+    return signedUrl;
+  } catch (err: unknown) {
+    if (err instanceof ChatApiError) throw err;
+    const message = err instanceof Error ? err.message : 'Network error';
+    throw new ChatApiError(`Could not reach the voice service: ${message}`, 0, message);
+  }
+}
+
 /**
  * Checks backend health status
  */

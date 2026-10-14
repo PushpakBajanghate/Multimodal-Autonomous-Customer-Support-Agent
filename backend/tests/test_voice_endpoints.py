@@ -31,6 +31,68 @@ def test_voice_synthesis_falls_back_without_provider_key(monkeypatch):
     assert payload["data"]["audio_base64"] is None
 
 
+def test_elevenlabs_session_requires_customer_authentication():
+    response = client.post("/api/v1/voice/elevenlabs/session")
+
+    assert response.status_code == 401
+
+
+def test_elevenlabs_session_reports_missing_configuration(monkeypatch):
+    monkeypatch.setattr("app.api.v1.endpoints.voice.settings.ELEVENLABS_API_KEY", None)
+    monkeypatch.setattr("app.api.v1.endpoints.voice.settings.ELEVENLABS_AGENT_ID", None)
+    token = _customer_token()
+
+    response = client.post(
+        "/api/v1/voice/elevenlabs/session",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 503
+    assert "not configured" in response.json()["reason"].lower()
+
+
+def test_elevenlabs_session_returns_only_signed_url(monkeypatch):
+    api_key = "server-only-test-key"
+    signed_url = "wss://api.elevenlabs.io/v1/convai/conversation?signature=short-lived"
+    monkeypatch.setattr("app.api.v1.endpoints.voice.settings.ELEVENLABS_API_KEY", api_key)
+    monkeypatch.setattr("app.api.v1.endpoints.voice.settings.ELEVENLABS_AGENT_ID", "agent_test123")
+
+    class MockResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"signed_url": signed_url}
+
+    class MockAsyncClient:
+        def __init__(self, timeout):
+            assert timeout == 10
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, params, headers):
+            assert url.endswith("/get-signed-url")
+            assert params == {"agent_id": "agent_test123"}
+            assert headers == {"xi-api-key": api_key}
+            return MockResponse()
+
+    monkeypatch.setattr("app.api.v1.endpoints.voice.httpx.AsyncClient", MockAsyncClient)
+    token = _customer_token()
+
+    response = client.post(
+        "/api/v1/voice/elevenlabs/session",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"signed_url": signed_url}
+    assert api_key not in response.text
+
+
 def test_outbound_call_reports_missing_twilio_configuration(monkeypatch):
     monkeypatch.setattr("app.api.v1.endpoints.voice.settings.TWILIO_ACCOUNT_SID", None)
     monkeypatch.setattr("app.api.v1.endpoints.voice.settings.TWILIO_AUTH_TOKEN", None)
