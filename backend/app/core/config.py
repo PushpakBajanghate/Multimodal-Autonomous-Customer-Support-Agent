@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 
 # Determine project base directory and .env paths
 _CURRENT_DIR = Path(__file__).resolve().parent
@@ -16,6 +16,7 @@ _ENV_PATHS = [
 ]
 
 class Settings(BaseSettings):
+    APP_ENV: str = Field(default="development")
     PROJECT_NAME: str = "Multimodal Autonomous Customer Support Agent"
     API_V1_STR: str = "/api/v1"
     
@@ -76,9 +77,25 @@ class Settings(BaseSettings):
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
-        if self.DATABASE_URL:
+        # DATABASE_URL is the explicit override used by Docker Compose. Without
+        # it, local development is intentionally zero-configuration SQLite.
+        if self.DATABASE_URL and self.DATABASE_URL.strip():
             return self.DATABASE_URL
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        return f"sqlite:///{(_BACKEND_DIR / 'macs.db').as_posix()}"
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self):
+        if self.APP_ENV.lower() == "production":
+            insecure_values = {
+                "SECRET_KEY": "super_secret_jwt_key_for_development_change_in_production",
+                "AGENT_SERVICE_SECRET": "agent_internal_service_secret_key_2026",
+            }
+            for field_name, default_value in insecure_values.items():
+                if getattr(self, field_name) == default_value:
+                    raise ValueError(
+                        f"{field_name} must be changed when APP_ENV=production"
+                    )
+        return self
 
     model_config = SettingsConfigDict(
         env_file=_ENV_PATHS,

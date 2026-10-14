@@ -22,8 +22,7 @@ def send_chat_message(
 ):
     """
     Customer-facing chat endpoint.
-    Maintains conversation session state and persists all messages to the PostgreSQL database.
-    (Stubbed response for Phase 2; autonomous agent LLM reasoning pipeline connects in Phase 3/4).
+    Maintains conversation session state and persists all messages to the configured database.
     """
     customer_id = None
     if isinstance(actor, CustomerPrincipal):

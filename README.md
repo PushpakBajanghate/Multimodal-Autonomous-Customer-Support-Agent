@@ -1,23 +1,17 @@
 # Multimodal Autonomous Customer Support Agent
 
-[![Application Status: Running](https://img.shields.io/badge/System_Status-Running_&_Healthy-success?style=for-the-badge&logo=fastapi)](http://localhost:8000/health)
-[![Frontend UI: Active](https://img.shields.io/badge/Frontend_UI-http%3A%2F%2Flocalhost%3A3000-blue?style=for-the-badge&logo=next.js)](http://localhost:3000)
-[![Backend API: Active](https://img.shields.io/badge/API_Docs-http%3A%2F%2Flocalhost%3A8000%2Fdocs-teal?style=for-the-badge&logo=swagger)](http://localhost:8000/docs)
-
 A state-of-the-art multimodal autonomous customer support platform with real-time reasoning and thought transparency. The system features a unified AI agent brain, **Aura**, delivering seamless omnichannel customer service across live text chat and voice interfaces, backed by strict Role-Based Access Control (RBAC), lightweight customer session lookups, and internal staff escalation management.
 
 ---
 
-## 🚀 Live Working Links & Application Status
+## 🚀 Local Endpoints
 
-| Service | Working Local Link | Description | Status |
-| :--- | :--- | :--- | :--- |
-| **Frontend Web App** | [http://localhost:3000](http://localhost:3000) | Next.js interactive chat & voice simulation dashboard | 🟢 **Running** |
-| **FastAPI Backend Root** | [http://localhost:8000](http://localhost:8000) | Autonomous Agent Brain REST service | 🟢 **Running** |
-| **Interactive API Docs (Swagger UI)** | [http://localhost:8000/docs](http://localhost:8000/docs) | Full interactive OpenAPI test bench | 🟢 **Live** |
-| **Alternative API Docs (ReDoc)** | [http://localhost:8000/redoc](http://localhost:8000/redoc) | Detailed endpoint schema & payload documentation | 🟢 **Live** |
-| **Backend Health Check** | [http://localhost:8000/health](http://localhost:8000/health) | Real-time backend connectivity check | 🟢 **Healthy** |
-| **Staff Analytics Dashboard API** | [http://localhost:8000/api/v1/analytics/dashboard](http://localhost:8000/api/v1/analytics/dashboard) | Escalation metrics and resolution analytics | 🟢 **Protected (Staff JWT)** |
+| Service | URL | Description |
+| :--- | :--- | :--- |
+| Frontend Web App | [http://localhost:3000](http://localhost:3000) | Next.js chat UI, after `make frontend` or `make dev` |
+| FastAPI Backend | [http://localhost:8000](http://localhost:8000) | REST service, after `make backend` or `make dev` |
+| API Docs | [http://localhost:8000/docs](http://localhost:8000/docs) | Available while the backend is running |
+| Health Check | [http://localhost:8000/health](http://localhost:8000/health) | Available while the backend is running |
 
 ---
 
@@ -46,8 +40,8 @@ flowchart TB
     end
 
     subgraph PersistenceLayer [Data & Cache Infrastructure]
-        PostgreSQL[(PostgreSQL Relational DB :5435)]
-        Redis[(Redis Session & Pub/Sub :6379)]
+        LocalSQLite[(SQLite: backend/macs.db)]
+        PostgreSQL[(PostgreSQL via Docker Compose)]
     end
 
     CustomerChat --> BearerAuth
@@ -59,9 +53,11 @@ flowchart TB
 
     VerificationGate --> ServiceLayer
 
+    ServiceLayer --> LocalSQLite
     ServiceLayer --> PostgreSQL
-    ServiceLayer --> Redis
 ```
+
+Local development uses SQLite by default. If `DATABASE_URL` is set, it takes precedence; Docker Compose sets it to the Postgres service. Redis is present in the compose file for planned infrastructure work and is not currently used by the application.
 
 ---
 
@@ -110,25 +106,50 @@ The backend implements a dual-actor security model with role separation, lightwe
 
 ## 💻 Running the Application Locally
 
-### 1. Start the FastAPI Backend
-```powershell
-# In root directory or backend directory
-.\venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+### One-command development
+
+```bash
+make setup
+make dev
 ```
 
-### 2. Start the Next.js Frontend
+`make dev` runs the backend and frontend together. To run them separately, use `make backend` and `make frontend`.
+
+On Windows PowerShell, use the equivalent commands:
+
 ```powershell
-cd frontend
-npm run dev
+python -m pip install -r backend\requirements.txt
+npm --prefix frontend install
+Start-Process powershell -ArgumentList '-NoExit', '-Command', 'cd backend; python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload'
+npm --prefix frontend run dev
 ```
 
-### 3. Run Automated Test Suite
-```powershell
-.\venv\Scripts\pytest backend\tests -v
+For deterministic local chat testing, set `LLM_PROVIDER=mock` in `.env`.
+
+### Manual startup
+
+#### 1. Start the FastAPI backend
+```bash
+cd backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+#### 2. Start the Next.js frontend
+```bash
+npm --prefix frontend run dev
+```
+
+#### 3. Run the automated test suite
+```bash
+LLM_PROVIDER=mock python -m pytest backend/tests -q
 ```
 
 ---
 
 ## 🧪 Test Verification
 
-All 38 automated test cases covering authentication, customer sessions, verified sensitive action requirements, staff RBAC, and agent service headers pass with 100% success rate.
+The suite currently contains 78 tests. Run the command above to verify the current pass count; mock mode keeps tests independent of external LLM credentials.
+
+## Roadmap
+
+Redis-backed sessions/pub-sub and browser automation coverage (for example, Playwright) are planned but are not implemented in this baseline.

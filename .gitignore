@@ -65,7 +65,6 @@ pnpm-debug.log*
 Thumbs.db
 db.sqlite3
 *.db
-macs.db
 
 # IDEs
 .idea/

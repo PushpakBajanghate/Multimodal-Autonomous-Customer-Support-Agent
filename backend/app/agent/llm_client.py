@@ -288,6 +288,9 @@ def execute_llm_intent_pipeline(
 
     # Fast-Path: Unambiguous intent patterns in <1ms
     heuristic = analyze_utterance_rule_based(clean_text, conversation_context)
+    if settings.LLM_PROVIDER.lower() == "mock":
+        heuristic.reasoning = f"[Mock NLU Engine] {heuristic.reasoning or ''}"
+        return heuristic
     if heuristic.confidence >= 0.85 and not heuristic.is_ambiguous:
         heuristic.reasoning = f"[Fast-Path NLU] {heuristic.reasoning or ''}"
         return heuristic
@@ -343,6 +346,17 @@ def generate_conversational_llm_response(
     Generates genuine, context-aware chatbot answers powered directly by active LLM models.
     Grounded on verified database data, previous conversation turns, and customer context.
     """
+    if settings.LLM_PROVIDER.lower() == "mock":
+        return generate_intelligent_offline_response(
+            intent=IntentType(intent) if isinstance(intent, str) and intent in [e.value for e in IntentType] else IntentType.UNKNOWN,
+            user_message=user_message,
+            tool_results=tool_results,
+            customer_name=customer_name,
+            customer_orders=customer_orders,
+            missing_entities=missing_entities,
+            clarification_prompt=clarification_prompt,
+        )
+
     response_language = detect_voice_language(user_message, "auto")
     is_hindi_target = response_language.startswith("hi")
 
