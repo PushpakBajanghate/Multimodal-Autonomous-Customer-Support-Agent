@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from sqlalchemy import (
     String, ForeignKey, Numeric, Boolean, DateTime, JSON, Text, Integer, Index
@@ -127,7 +127,7 @@ class Conversation(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     customer_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True)
     channel: Mapped[str] = mapped_column(String(50), nullable=False)  # chat, voice
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # active, completed
 
     # Relationships
