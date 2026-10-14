@@ -237,3 +237,58 @@ def test_deliberate_tool_failure_retries_and_escalates():
         "log_interaction"
     ]
     assert final_state["trajectory"] == expected_trajectory
+
+
+def test_normalize_input_safely_handles_none_raw_input():
+    """Verifies that normalize_input handles raw_input=None without throwing AttributeError."""
+    state: AgentState = {
+        "raw_input": None,
+        "trajectory": []
+    }
+    from app.agent.graph import normalize_input
+    result = normalize_input(state)
+    assert result["normalized_input"] == ""
+    assert "normalize_input" in result["trajectory"]
+
+
+def test_load_memory_populates_customer_profile_and_orders(db: Session):
+    """Verifies that load_memory populates real customer details and orders from DB."""
+    customer = db.query(Customer).first()
+    assert customer is not None
+
+    state: AgentState = {
+        "customer_id": customer.id,
+        "trajectory": []
+    }
+    from app.agent.graph import load_memory
+    result = load_memory(state)
+    cust_ctx = result["customer_context"]
+    assert cust_ctx["customer_id"] == customer.id
+    assert cust_ctx.get("name") == customer.name
+    assert cust_ctx.get("email") == customer.email
+    assert "orders" in cust_ctx
+    assert isinstance(cust_ctx["orders"], list)
+
+
+def test_outbound_call_intent_full_graph_flow(db: Session):
+    """Verifies that OUTBOUND_CALL_REQUEST plans actions, selects initiate_outbound_call, and returns phone confirmation."""
+    customer = db.query(Customer).first()
+    assert customer is not None
+
+    initial_state: AgentState = {
+        "customer_id": customer.id,
+        "channel": "chat",
+        "raw_input": "Please give me a call at +919876543210 regarding my order",
+        "conversation_history": [],
+        "trajectory": []
+    }
+
+    final_state = agent_graph.invoke(initial_state)
+
+    assert final_state["intent"] == IntentType.OUTBOUND_CALL_REQUEST
+    assert final_state["selected_tool"] == "initiate_outbound_call"
+    assert final_state["tool_results"]["status"] == "success"
+    assert final_state["tool_results"]["call_status"] == "call_initiated"
+    assert "9876543210" in final_state["tool_results"]["phone_number"]
+    assert any(term in final_state["final_response"].lower() for term in ["call", "dial", "phone", "ring", "9876543210"])
+

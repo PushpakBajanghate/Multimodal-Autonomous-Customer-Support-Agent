@@ -426,7 +426,8 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
         if phone_num:
             tool_result = {
                 "success": True,
-                "status": "call_initiated",
+                "status": "success",
+                "call_status": "call_initiated",
                 "phone_number": phone_num,
                 "call_sid": "CA_MOCK_OUTBOUND_CALL_SUCCESS"
             }
@@ -474,7 +475,10 @@ def validate_result(state: AgentState) -> Dict[str, Any]:
     tool_results = state.get("tool_results", {})
     retry_count = state.get("retry_count", 0)
 
-    is_success = bool(tool_results.get("status") == "success" and tool_results.get("success") is not False)
+    is_success = bool(
+        (tool_results.get("status") in ("success", "call_initiated") or tool_results.get("success") is True)
+        and tool_results.get("success") is not False
+    )
 
     needs_escalation = False
     needs_retry = False
@@ -589,6 +593,22 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
     customer_orders = state.get("customer_context", {}).get("orders", [])
     missing = state.get("missing_entities", [])
     clarification = state.get("clarification_prompt")
+
+    from app.services.voice_service import detect_voice_language
+    from app.agent.responder import _is_plain_greeting, _hindi_greeting
+
+    if intent == IntentType.UNKNOWN and _is_plain_greeting(raw_input):
+        preferred_lang = detect_voice_language(raw_input, "auto")
+        if preferred_lang.startswith("hi"):
+            return {
+                "final_response": _hindi_greeting(customer_name),
+                "trajectory": trajectory
+            }
+        greeting = f"Hello {customer_name}! " if customer_name else "Hello! "
+        return {
+            "final_response": f"{greeting}I am Aura, your customer support assistant. How can I help you today with orders, refunds, cancellations, delivery, or account issues?",
+            "trajectory": trajectory
+        }
 
     from app.agent.llm_client import (
         generate_conversational_llm_response,
