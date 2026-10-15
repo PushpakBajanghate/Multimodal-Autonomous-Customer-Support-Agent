@@ -290,3 +290,107 @@ def test_agent_invalid_service_key_rejected():
     data = get_error_payload(response)
     assert data["success"] is False
     assert "invalid agent service credentials" in data["reason"].lower()
+
+# -------------------------------------------------------------
+# 8. Customer Registration & Login Tests
+# -------------------------------------------------------------
+def test_customer_register_success(db: Session):
+    email = f"newuser_{datetime.now(timezone.utc).timestamp()}@example.com"
+    payload = {
+        "name": "Test User",
+        "email": email,
+        "password": "securepassword123"
+    }
+    response = client.post("/api/v1/auth/customer-register", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["data"]["email"] == email
+    assert data["data"]["name"] == "Test User"
+    assert data["data"]["is_verified"] is True
+    assert "access_token" in data["data"]
+    assert len(data["data"]["access_token"]) > 20
+
+def test_customer_register_duplicate_email(db: Session):
+    customer = db.query(Customer).first()
+    payload = {
+        "name": "Duplicate User",
+        "email": customer.email,
+        "password": "password12345"
+    }
+    response = client.post("/api/v1/auth/customer-register", json=payload)
+    assert response.status_code == 400
+    data = get_error_payload(response)
+    assert data["success"] is False
+    assert "already exists" in data["reason"].lower()
+
+def test_customer_register_short_password():
+    payload = {
+        "name": "Short Password",
+        "email": "shortpass@example.com",
+        "password": "123"
+    }
+    response = client.post("/api/v1/auth/customer-register", json=payload)
+    assert response.status_code == 400
+    data = get_error_payload(response)
+    assert data["success"] is False
+    assert "at least 6 characters" in data["reason"].lower()
+
+def test_customer_login_success(db: Session):
+    # Register a user first
+    email = f"logintest_{datetime.now(timezone.utc).timestamp()}@example.com"
+    reg_payload = {
+        "name": "Login Tester",
+        "email": email,
+        "password": "mypassword123"
+    }
+    r_reg = client.post("/api/v1/auth/customer-register", json=reg_payload)
+    assert r_reg.status_code == 200
+
+    # Login with credentials
+    login_payload = {
+        "email": email,
+        "password": "mypassword123"
+    }
+    response = client.post("/api/v1/auth/customer-login", json=login_payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["data"]["email"] == email
+    assert data["data"]["name"] == "Login Tester"
+    assert "access_token" in data["data"]
+
+def test_customer_login_wrong_password(db: Session):
+    email = f"wrongpw_{datetime.now(timezone.utc).timestamp()}@example.com"
+    client.post("/api/v1/auth/customer-register", json={
+        "name": "Wrong Pw Tester",
+        "email": email,
+        "password": "correctpassword123"
+    })
+
+    response = client.post("/api/v1/auth/customer-login", json={
+        "email": email,
+        "password": "incorrectpassword"
+    })
+    assert response.status_code == 401
+    data = get_error_payload(response)
+    assert data["success"] is False
+    assert "invalid email or password" in data["reason"].lower()
+
+def test_customer_get_me_profile(db: Session):
+    email = f"metest_{datetime.now(timezone.utc).timestamp()}@example.com"
+    reg = client.post("/api/v1/auth/customer-register", json={
+        "name": "Profile Tester",
+        "email": email,
+        "password": "password12345"
+    })
+    token = reg.json()["data"]["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.get("/api/v1/auth/me", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["data"]["email"] == email
+    assert data["data"]["name"] == "Profile Tester"
+

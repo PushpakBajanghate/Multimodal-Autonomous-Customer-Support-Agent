@@ -20,6 +20,23 @@ class CustomerSessionRead(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+class CustomerRegisterRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+class CustomerLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class CustomerAuthResponse(BaseModel):
+    customer_id: int
+    name: str
+    email: str
+    is_verified: bool = True
+    access_token: str
+    token_type: str = "bearer"
+
 class StaffLoginRequest(BaseModel):
     username: str
     password: str

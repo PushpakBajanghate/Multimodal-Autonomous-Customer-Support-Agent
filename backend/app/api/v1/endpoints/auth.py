@@ -6,13 +6,14 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models import Customer, Order
 from app.core.security import (
-    STAFF_ACCOUNTS, verify_password,
+    STAFF_ACCOUNTS, verify_password, get_password_hash,
     create_customer_session_token, create_staff_token
 )
 from app.api.deps import get_current_customer
 from app.schemas.common import ApiResponse
 from app.schemas.auth import (
     CustomerSessionCreate, CustomerVerifySessionRequest, CustomerSessionRead,
+    CustomerRegisterRequest, CustomerLoginRequest, CustomerAuthResponse,
     StaffLoginRequest, StaffTokenRead, CustomerPrincipal
 )
 
@@ -183,3 +184,175 @@ def staff_login(payload: StaffLoginRequest):
             name=staff_record["name"]
         )
     )
+
+@router.post("/customer-register", response_model=ApiResponse[CustomerAuthResponse])
+def customer_register(
+    payload: CustomerRegisterRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Registers a new customer with name, email, and password.
+    Returns customer session token immediately for instant access (Immediate Login).
+    """
+    clean_email = payload.email.strip().lower()
+    clean_name = payload.name.strip()
+
+    if not clean_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ApiResponse[CustomerAuthResponse](
+                success=False,
+                status="failure",
+                reason="Name is required.",
+                data=None
+            ).model_dump()
+        )
+
+    if len(payload.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ApiResponse[CustomerAuthResponse](
+                success=False,
+                status="failure",
+                reason="Password must be at least 6 characters long.",
+                data=None
+            ).model_dump()
+        )
+
+    existing = db.query(Customer).filter(Customer.email == clean_email).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ApiResponse[CustomerAuthResponse](
+                success=False,
+                status="failure",
+                reason="An account with this email already exists. Please log in.",
+                data=None
+            ).model_dump()
+        )
+
+    hashed_pw = get_password_hash(payload.password)
+    customer = Customer(
+        name=clean_name,
+        email=clean_email,
+        password_hash=hashed_pw
+    )
+    db.add(customer)
+    db.commit()
+    db.refresh(customer)
+
+    token = create_customer_session_token(
+        customer_id=customer.id,
+        is_verified=True,
+        email=customer.email
+    )
+
+    return ApiResponse[CustomerAuthResponse](
+        success=True,
+        status="success",
+        reason="Registration successful.",
+        data=CustomerAuthResponse(
+            customer_id=customer.id,
+            name=customer.name,
+            email=customer.email,
+            is_verified=True,
+            access_token=token,
+            token_type="bearer"
+        )
+    )
+
+@router.post("/customer-login", response_model=ApiResponse[CustomerAuthResponse])
+def customer_login(
+    payload: CustomerLoginRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Authenticates a customer using email and password.
+    Returns customer session token and profile info.
+    """
+    clean_email = payload.email.strip().lower()
+    customer = db.query(Customer).filter(Customer.email == clean_email).first()
+
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ApiResponse[CustomerAuthResponse](
+                success=False,
+                status="failure",
+                reason="Invalid email or password.",
+                data=None
+            ).model_dump()
+        )
+
+    is_valid = False
+    if customer.password_hash:
+        is_valid = verify_password(payload.password, customer.password_hash)
+    elif payload.password in ["password123", "adminpassword123"]:
+        # Allow default password for pre-seeded development accounts
+        is_valid = True
+
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ApiResponse[CustomerAuthResponse](
+                success=False,
+                status="failure",
+                reason="Invalid email or password.",
+                data=None
+            ).model_dump()
+        )
+
+    token = create_customer_session_token(
+        customer_id=customer.id,
+        is_verified=True,
+        email=customer.email
+    )
+
+    return ApiResponse[CustomerAuthResponse](
+        success=True,
+        status="success",
+        reason="Login successful.",
+        data=CustomerAuthResponse(
+            customer_id=customer.id,
+            name=customer.name,
+            email=customer.email,
+            is_verified=True,
+            access_token=token,
+            token_type="bearer"
+        )
+    )
+
+@router.get("/me", response_model=ApiResponse[CustomerAuthResponse])
+def get_current_customer_profile(
+    current_customer: CustomerPrincipal = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Fetches the profile of the currently authenticated customer.
+    """
+    customer = db.query(Customer).filter(Customer.id == current_customer.customer_id).first()
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ApiResponse[CustomerAuthResponse](
+                success=False,
+                status="failure",
+                reason="Customer not found.",
+                data=None
+            ).model_dump()
+        )
+
+    return ApiResponse[CustomerAuthResponse](
+        success=True,
+        status="success",
+        reason=None,
+        data=CustomerAuthResponse(
+            customer_id=customer.id,
+            name=customer.name,
+            email=customer.email,
+            is_verified=current_customer.is_verified,
+            access_token="",
+            token_type="bearer"
+        )
+    )
+

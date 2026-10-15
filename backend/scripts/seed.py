@@ -8,6 +8,7 @@ import hashlib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.config import settings
+from app.core.security import get_password_hash
 from app.models import (
     Customer, Order, OrderItem, Refund, Cancellation,
     AddressChangeRequest, PasswordResetRequest, Ticket,
@@ -345,9 +346,10 @@ def seed_database():
             used_emails.add(email)
             customer_data.append((full_name, email))
 
+        default_pw_hash = get_password_hash("password123")
         customers = []
         for name, email in customer_data:
-            cust = Customer(name=name, email=email)
+            cust = Customer(name=name, email=email, password_hash=default_pw_hash)
             session.add(cust)
             customers.append(cust)
 

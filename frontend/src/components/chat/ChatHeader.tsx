@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { AuraBrandMark } from './AuraBrandMark';
+import { CustomerUser } from '../../types/auth';
 
 interface ChatHeaderProps {
   conversationId: number | null;
@@ -14,6 +15,8 @@ interface ChatHeaderProps {
   onOpenVoiceModal?: () => void;
   onOpenReasoningDrawer?: () => void;
   onOpenVerificationModal?: () => void;
+  currentUser?: CustomerUser | null;
+  onLogout?: () => void;
 }
 
 function HeaderIcon({ name }: { name: 'history' | 'voice' | 'brain' | 'verify' }) {
@@ -41,7 +44,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onRefreshHealth,
   onOpenVoiceModal,
   onOpenReasoningDrawer,
-  onOpenVerificationModal
+  onOpenVerificationModal,
+  currentUser,
+  onLogout
 }) => (
   <header className="aura-topbar z-20 px-3 py-3 sm:px-5 lg:px-7">
     <div className="aura-topbar-pill mx-auto flex min-h-[62px] max-w-[1540px] items-center justify-between gap-4 rounded-[20px] border px-4 py-2.5 sm:px-5">
@@ -84,6 +89,31 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       </div>
 
       <div className="aura-topbar-actions flex shrink-0 items-center gap-2">
+        {currentUser && (
+          <div className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2.5 text-[11px] text-[#f5f2ff]">
+            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-600 font-bold text-white text-[10px]">
+              {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <span className="max-w-[110px] truncate font-medium text-xs hidden sm:inline" title={currentUser.email}>
+              {currentUser.name}
+            </span>
+            {onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="ml-0.5 rounded p-1 text-[#a49fb2] hover:text-rose-300 hover:bg-rose-500/10 transition"
+                title="Sign Out"
+                aria-label="Sign Out"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
         <button
           type="button"
           onClick={onRefreshHealth}
