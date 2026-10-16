@@ -68,6 +68,14 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
 
+    # Safely ensure password_hash column exists on existing customer tables (e.g. SQLite)
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE customers ADD COLUMN password_hash VARCHAR(255)"))
+    except Exception:
+        pass
+
     db = SessionLocal()
     try:
         from app.models.models import Customer, Order, OrderItem
@@ -78,11 +86,13 @@ def init_db():
             )
             now = datetime.now(timezone.utc)
 
+            from app.core.security import get_password_hash
+            default_pw = get_password_hash("password123")
             c1 = Customer(
-                name="Pushpak Bajanghate", email="pushpakbajanghate09@gmail.com"
+                name="Pushpak Bajanghate", email="pushpakbajanghate09@gmail.com", password_hash=default_pw
             )
-            c2 = Customer(name="Pushkar Sawarkar", email="pushkarsawarkar22@gmail.com")
-            c3 = Customer(name="Ashlesha Varghane", email="ashleshavarghane@gmail.com")
+            c2 = Customer(name="Pushkar Sawarkar", email="pushkarsawarkar22@gmail.com", password_hash=default_pw)
+            c3 = Customer(name="Ashlesha Varghane", email="ashleshavarghane@gmail.com", password_hash=default_pw)
             db.add_all([c1, c2, c3])
             db.commit()
             db.refresh(c1)

@@ -12,6 +12,7 @@ class Customer(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Relationships
     orders: Mapped[List["Order"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
