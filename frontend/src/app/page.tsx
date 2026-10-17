@@ -12,14 +12,17 @@ import { VoiceSimulationModal } from '../components/chat/VoiceSimulationModal';
 import { ReasoningDrawer } from '../components/chat/ReasoningDrawer';
 import { VerificationModal } from '../components/chat/VerificationModal';
 import { ActionConfirmModal } from '../components/chat/ActionConfirmModal';
+import { DemoOrdersPanel } from '../components/chat/DemoOrdersPanel';
 import { AuthScreen } from '../components/auth/AuthScreen';
 import { CustomerUser } from '../types/auth';
 import {
   getStoredUser,
   getStoredAuthToken,
   fetchCurrentProfile,
-  clearStoredAuth
+  clearStoredAuth,
+  getCustomerOrders
 } from '../services/chatApi';
+import { CustomerOrderSummary } from '../types/chat';
 
 const emptySubscribe = () => () => {};
 
@@ -65,6 +68,7 @@ export default function CustomerSupportPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [pendingCancellation, setPendingCancellation] = useState<string | null>(null);
   const [humanEscalationMessage, setHumanEscalationMessage] = useState<string | null>(null);
+  const [customerOrders, setCustomerOrders] = useState<CustomerOrderSummary[]>([]);
   const shownEscalationMessageId = useRef<string | null>(null);
 
   // Validate stored auth token in background on initial load
@@ -82,6 +86,13 @@ export default function CustomerSupportPage() {
         });
     }
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    void getCustomerOrders(currentUser.customer_id)
+      .then(setCustomerOrders)
+      .catch(() => setCustomerOrders([]));
+  }, [currentUser]);
 
   const handleAuthSuccess = useCallback((user: CustomerUser) => {
     setCurrentUser(user);
@@ -163,6 +174,7 @@ export default function CustomerSupportPage() {
 
         <div className="aura-content flex min-h-0 flex-1">
           <section className="aura-chat flex min-w-0 flex-1 flex-col bg-white">
+            <DemoOrdersPanel orders={customerOrders} onSelectOrder={handleSupportMessage} />
             <ErrorBanner error={error} onDismiss={dismissError} onRetry={checkHealth} />
             <MessageList
               messages={messages}

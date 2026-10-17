@@ -44,6 +44,13 @@ export interface ConversationReadData {
   messages: ConversationMessageReadData[];
 }
 
+export interface CustomerOrderSummary {
+  id: number;
+  status: string;
+  total_amount: number;
+  items: Array<{ product_name: string; quantity: number }>;
+}
+
 export interface ApiResponseWrapper<T> {
   success: boolean;
   status: string;

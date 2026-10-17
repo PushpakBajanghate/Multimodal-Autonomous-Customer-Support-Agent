@@ -4,7 +4,8 @@ import {
   ChatResponseData,
   ConversationMessageReadData,
   ConversationReadData,
-  VoiceSynthesisResponseData
+  VoiceSynthesisResponseData,
+  CustomerOrderSummary
 } from '../types/chat';
 import { CustomerUser, CustomerAuthData } from '../types/auth';
 
@@ -200,6 +201,15 @@ export async function fetchCurrentProfile(): Promise<CustomerUser | null> {
   }
 
   return null;
+}
+
+export async function getCustomerOrders(customerId: number): Promise<CustomerOrderSummary[]> {
+  const res = await authFetch(`${API_BASE}/customers/${customerId}/orders`);
+  const payload = await res.json().catch(() => null) as ApiResponseWrapper<CustomerOrderSummary[]> | null;
+  if (!res.ok || !payload?.success) {
+    throw new ChatApiError(payload?.reason || 'Unable to load your orders.', res.status);
+  }
+  return payload.data || [];
 }
 
 
