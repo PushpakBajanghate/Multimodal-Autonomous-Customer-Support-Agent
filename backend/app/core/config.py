@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     APP_ENV: str = Field(default="development")
     PROJECT_NAME: str = "Multimodal Autonomous Customer Support Agent"
     API_V1_STR: str = "/api/v1"
+    # Comma-separated browser origins allowed to call the API. Keep the
+    # Vercel regex enabled for preview deployments and use CORS_ORIGINS for
+    # the production/custom frontend domain.
+    CORS_ORIGINS: str = ""
+    CORS_ORIGIN_REGEX: str = r"https://([a-z0-9-]+\.)?vercel\.app"
     
     # Database configurations
     DATABASE_URL: str | None = Field(default=None)

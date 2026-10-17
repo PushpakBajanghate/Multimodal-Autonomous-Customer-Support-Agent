@@ -8,8 +8,13 @@ import {
 } from '../types/chat';
 import { CustomerUser, CustomerAuthData } from '../types/auth';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000/api/v1';
-export const HEALTH_URL = process.env.NEXT_PUBLIC_HEALTH_URL || 'http://localhost:8000/health';
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE?.trim().replace(/\/$/, '');
+export const API_BASE = configuredApiBase || 'http://localhost:8000/api/v1';
+export const HEALTH_URL =
+  process.env.NEXT_PUBLIC_HEALTH_URL?.trim() ||
+  `${API_BASE.replace(/\/api\/v1$/, '')}/health`;
+
+const HEALTH_TIMEOUT_MS = 10_000;
 
 const TOKEN_STORAGE_KEY = 'aura_access_token';
 const USER_STORAGE_KEY = 'aura_customer_user';
@@ -454,10 +459,20 @@ export async function getElevenLabsSessionUrl(signal?: AbortSignal): Promise<str
  * Checks backend health status
  */
 export async function checkBackendHealth(): Promise<boolean> {
-  try {
-    const res = await fetch(HEALTH_URL, { cache: 'no-store' });
-    return res.ok;
-  } catch {
-    return false;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+    try {
+      const res = await fetch(HEALTH_URL, {
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      if (res.ok) return true;
+    } catch {
+      // A sleeping Render free service may need a second request to wake up.
+    } finally {
+      window.clearTimeout(timeout);
+    }
   }
+  return false;
 }

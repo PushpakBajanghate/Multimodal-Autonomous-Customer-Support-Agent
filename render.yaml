@@ -16,6 +16,10 @@ services:
         value: Multimodal Autonomous Customer Support Agent
       - key: API_V1_STR
         value: /api/v1
+      - key: CORS_ORIGINS
+        sync: false
+      - key: CORS_ORIGIN_REGEX
+        value: https://([a-z0-9-]+\.)?vercel\.app
       - key: SECRET_KEY
         generateValue: true
       - key: AGENT_SERVICE_SECRET
@@ -31,7 +35,7 @@ services:
       - key: VOICE_PROVIDER
         value: sarvam
       - key: SARVAM_API_KEY
-        value: sk_06o9xp0e_P4FBQrtZKv16xojDvnz192th
+        sync: false
       - key: SARVAM_TTS_MODEL
         value: bulbul:v3
       - key: SARVAM_HINDI_SPEAKER
