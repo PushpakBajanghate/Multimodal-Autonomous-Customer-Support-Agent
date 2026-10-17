@@ -501,7 +501,9 @@ def validate_result(state: AgentState) -> Dict[str, Any]:
             "not eligible",
             "cancellation rejected",
             "refund request rejected",
-            "address change rejected"
+            "address change rejected",
+            "human approval",
+            "awaiting human"
         ])
 
         if is_domain_policy_rejection:

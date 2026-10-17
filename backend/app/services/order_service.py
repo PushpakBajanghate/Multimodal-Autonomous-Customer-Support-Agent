@@ -1,7 +1,9 @@
 from datetime import datetime, timezone, timedelta
 from typing import Tuple, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from app.models import Order, OrderItem, Refund, Cancellation
+from app.models import Order, OrderItem, Refund, Cancellation, Ticket
+
+HIGH_VALUE_REFUND_THRESHOLD = 25000.0
 
 def get_order_by_id(db: Session, order_id: int) -> Tuple[bool, Optional[str], Optional[Order]]:
     order = db.query(Order).filter(Order.id == order_id).first()
@@ -59,6 +61,31 @@ def process_refund(db: Session, order_id: int, reason: str) -> Tuple[bool, Optio
         return (
             False,
             f"Cannot process refund for Order #{order_id}: current status is '{order.status}' (refunds are only permitted for delivered or cancelled orders).",
+            None
+        )
+
+    # High-value refunds require human approval. Create the escalation ticket
+    # here so the rule applies consistently to chat, agent tools, and REST API
+    # callers, and never create an approved refund before staff review.
+    if float(order.total_amount) > HIGH_VALUE_REFUND_THRESHOLD:
+        ticket = Ticket(
+            customer_id=order.customer_id,
+            channel="chat",
+            intent="high_value_refund_approval",
+            actions_attempted={"order_id": order.id, "refund_amount": float(order.total_amount)},
+            tool_results={"status": "awaiting_human_approval"},
+            escalation_reason=(
+                f"Refund for Order #{order.id} is ₹{float(order.total_amount):,.2f}, "
+                f"above the ₹{HIGH_VALUE_REFUND_THRESHOLD:,.0f} approval threshold."
+            ),
+            status="open"
+        )
+        db.add(ticket)
+        db.commit()
+        return (
+            False,
+            f"Refund for Order #{order.id} requires human approval because it is above ₹{HIGH_VALUE_REFUND_THRESHOLD:,.0f}. "
+            f"Support ticket #{ticket.id} is open; the refund will be processed after approval.",
             None
         )
 

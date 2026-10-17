@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import { ChatHeader } from '../components/chat/ChatHeader';
 import { MessageList } from '../components/chat/MessageList';
@@ -11,6 +11,7 @@ import { SessionDrawer } from '../components/chat/SessionDrawer';
 import { VoiceSimulationModal } from '../components/chat/VoiceSimulationModal';
 import { ReasoningDrawer } from '../components/chat/ReasoningDrawer';
 import { VerificationModal } from '../components/chat/VerificationModal';
+import { ActionConfirmModal } from '../components/chat/ActionConfirmModal';
 import { AuthScreen } from '../components/auth/AuthScreen';
 import { CustomerUser } from '../types/auth';
 import {
@@ -62,6 +63,9 @@ export default function CustomerSupportPage() {
   const [isReasoningDrawerOpen, setIsReasoningDrawerOpen] = useState(false);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingCancellation, setPendingCancellation] = useState<string | null>(null);
+  const [humanEscalationMessage, setHumanEscalationMessage] = useState<string | null>(null);
+  const shownEscalationMessageId = useRef<string | null>(null);
 
   // Validate stored auth token in background on initial load
   useEffect(() => {
@@ -91,8 +95,24 @@ export default function CustomerSupportPage() {
   }, [clearLocalHistory]);
   const handleSupportMessage = (text: string) => {
     setSearchQuery('');
+    if (/\b(cancel|cancellation|canceling|cancelling)\b/i.test(text)) {
+      setPendingCancellation(text);
+      return;
+    }
     void sendMessage(text);
   };
+
+  useEffect(() => {
+    const latestAgentMessage = [...messages].reverse().find(message => message.sender === 'agent' && message.status === 'sent');
+    if (
+      latestAgentMessage &&
+      latestAgentMessage.id !== shownEscalationMessageId.current &&
+      /human approval|awaiting human|support ticket #\d+/i.test(latestAgentMessage.text)
+    ) {
+      shownEscalationMessageId.current = latestAgentMessage.id;
+      setHumanEscalationMessage(latestAgentMessage.text);
+    }
+  }, [messages]);
   const handleNewConversation = () => {
     setSearchQuery('');
     void startNewConversation();
@@ -188,6 +208,27 @@ export default function CustomerSupportPage() {
         onVerificationSuccess={msg => {
           sendMessage(msg);
         }}
+      />
+      <ActionConfirmModal
+        isOpen={pendingCancellation !== null}
+        title="Confirm order cancellation"
+        message="This cancellation will be sent to Aura Support for processing. Do you want to continue?"
+        confirmLabel="Yes, cancel order"
+        onClose={() => setPendingCancellation(null)}
+        onConfirm={() => {
+          const message = pendingCancellation;
+          setPendingCancellation(null);
+          if (message) void sendMessage(message);
+        }}
+      />
+      <ActionConfirmModal
+        isOpen={humanEscalationMessage !== null}
+        title="Human approval required"
+        message={`${humanEscalationMessage ?? ''} A human specialist will review it. The refund will be processed only after approval.`}
+        confirmLabel="Send to human"
+        tone="info"
+        onClose={() => setHumanEscalationMessage(null)}
+        onConfirm={() => setHumanEscalationMessage(null)}
       />
     </div>
   );
